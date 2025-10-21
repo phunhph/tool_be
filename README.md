@@ -1,132 +1,242 @@
-# Name of the project
+# 🧠 Exam Management API
 
-A short description of the project
+Hệ thống quản lý kỳ thi (Exam Management) được xây dựng bằng **FastAPI** với tính năng xác thực JWT, phân quyền theo Role, và các API CRUD cho module `Exam`.
 
-## Development Requirements
+---
 
-- Python 3.11+
-- Uv (Python Package Manager)
+## ⚙️ Công nghệ sử dụng
 
-### M.L Model Environment
+- **FastAPI** — Framework chính cho backend  
+- **SQLAlchemy** — ORM thao tác cơ sở dữ liệu  
+- **Pydantic** — Xác thực dữ liệu đầu vào/đầu ra  
+- **JWT** — Xác thực và phân quyền người dùng  
+- **SQLite / PostgreSQL** — Hệ quản trị cơ sở dữ liệu  
+- **Alembic** — Quản lý migration  
 
-```sh
-MODEL_PATH=./ml/model/
-MODEL_NAME=model.pkl
+---
+
+## 📁 Cấu trúc thư mục
+
+app/
+ ├── main.py                     # Điểm khởi chạy ứng dụng FastAPI
+ ├── core/
+ │   ├── security.py             # Xử lý JWT, mã hóa mật khẩu
+ │   └── config.py               # Cấu hình ứng dụng
+ ├── models/
+ │   ├── user.py                 # Model User
+ │   ├── role.py                 # Model Role
+ │   └── exam.py                 # Model Exam
+ ├── schemas/
+ │   ├── base_schemas.py         # Các schema cơ bản (ListResponse, CreateResponse,…)
+ │   └── exam_schemas.py         # Schema cho module Exam
+ ├── services/
+ │   ├── auth_service.py         # Đăng nhập, tạo token
+ │   ├── user_service.py         # CRUD User
+ │   └── exam_service.py         # CRUD Exam
+ ├── api/
+ │   ├── auth_api.py             # Endpoint: /auth/login
+ │   ├── exam_api.py             # Endpoint: /exams
+ │   └── user_api.py             # Endpoint: /users
+ ├── database/
+ │   ├── base.py                 # Base class cho SQLAlchemy
+ │   └── session.py              # Khởi tạo session DB
+ └── tests/                      # Unit test bằng pytest
+
+---
+
+## 🔐 Phân quyền hệ thống
+
+| Role         | Mô tả                              | Quyền hạn chính |
+|---------------|------------------------------------|------------------|
+| **master**    | Tài khoản quản trị cao nhất        | Full quyền (CRUD users, roles, exams) |
+| **create**    | Người tạo dữ liệu                  | Chỉ được `POST` và `GET` |
+| **update**    | Người chỉnh sửa dữ liệu            | Chỉ được `PUT` và `GET` |
+| **view+export** | Người xem & xuất dữ liệu          | Chỉ được `GET` |
+| **normal**    | Người dùng thông thường            | Hạn chế quyền |
+
+> ⚠️ Chỉ `role: master` mới được chỉnh sửa quyền người dùng khác.
+
+---
+
+## 🚀 Cách cài đặt và chạy dự án
+
+### 1️⃣ Clone project
+```bash
+git clone https://github.com/yourname/exam-api.git
+cd exam-api
 ```
 
-### Update `/predict`
-
-To update your machine learning model, add your `load` and `method` [change here](app/api/routes/predictor.py#L19) at `predictor.py`
-
-## Installation
-
-```sh
-python -m venv venv
-source venv/bin/activate
-make install
+### 2️⃣ Cài đặt thư viện
+```bash
+pip install -r requirements.txt
 ```
 
-## Runnning Localhost
+### 3️⃣ Tạo file môi trường `.env`
+```bash
+DATABASE_URL=sqlite:///./test.db
+SECRET_KEY=supersecret
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+```
 
-`make run`
+### 4️⃣ Chạy migration
+```bash
+alembic upgrade head
+```
 
-## Deploy app
+### 5️⃣ Chạy server
+```bash
+uvicorn app.main:app --reload
+```
 
-`make deploy`
+API chạy tại: 👉 [http://localhost:8000/docs](http://localhost:8000/docs)
 
-## Running Tests
+---
 
-`make test`
+## 📘 API Reference
 
-## Access Swagger Documentation
+### 🔑 **Đăng nhập**
 
-> <http://localhost:8080/docs>
+**POST** `/auth/login`
 
-## Access Redocs Documentation
+**Body**
+```json
+{
+  "username": "admin",
+  "password": "123456"
+}
+```
 
-> <http://localhost:8080/redoc>
+**Response**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+```
 
-## Project structure
+---
 
-Files related to application are in the `app` or `tests` directories.
-Application parts are:
+### 📚 **Exam API**
 
-    app
-    |
-    | # Fast-API stuff
-    ├── api                 - web related stuff.
-    │   └── routes          - web routes.
-    ├── core                - application configuration, startup events, logging.
-    ├── models              - pydantic models for this application.
-    ├── services            - logic that is not just crud related.
-    ├── main-aws-lambda.py  - [Optional] FastAPI application for AWS Lambda creation and configuration.
-    └── main.py             - FastAPI application creation and configuration.
-    |
-    | # ML stuff
-    ├── data             - where you persist data locally
-    │   ├── interim      - intermediate data that has been transformed.
-    │   ├── processed    - the final, canonical data sets for modeling.
-    │   └── raw          - the original, immutable data dump.
-    │
-    ├── notebooks        - Jupyter notebooks. Naming convention is a number (for ordering),
-    |
-    ├── ml               - modelling source code for use in this project.
-    │   ├── __init__.py  - makes ml a Python module
-    │   ├── pipeline.py  - scripts to orchestrate the whole pipeline
-    │   │
-    │   ├── data         - scripts to download or generate data
-    │   │   └── make_dataset.py
-    │   │
-    │   ├── features     - scripts to turn raw data into features for modeling
-    │   │   └── build_features.py
-    │   │
-    │   └── model        - scripts to train models and make predictions
-    │       ├── predict_model.py
-    │       └── train_model.py
-    │
-    └── tests            - pytest
+#### ➕ Tạo mới kỳ thi
+**POST** `/exams`
 
-## GCP
+```json
+{
+  "name": "Kỳ thi học kỳ 1",
+  "code": "EXAM001",
+  "start_time": "2025-10-22T08:00:00",
+  "end_time": "2025-10-22T10:00:00"
+}
+```
 
-Deploying inference service to Cloud Run
+**Response**
+```json
+{
+  "message": "Exam created successfully",
+  "status": true,
+  "examId": 1
+}
+```
 
-### Authenticate
+---
 
-1. Install `gcloud` cli
-2. `gcloud auth login`
-3. `gcloud config set project <PROJECT_ID>`
+#### 📋 Danh sách kỳ thi
+**GET** `/exams?page=1&page_size=10`
 
-### Enable APIs
+**Response**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Kỳ thi học kỳ 1",
+      "code": "EXAM001",
+      "start_time": "2025-10-22T08:00:00",
+      "end_time": "2025-10-22T10:00:00"
+    }
+  ],
+  "total": 1,
+  "page_size": 10,
+  "page_index": 1
+}
+```
 
-1. Cloud Run API
-2. Cloud Build API
-3. IAM API
+---
 
-### Deploy to Cloud Run
+#### ✏️ Cập nhật kỳ thi
+**PUT** `/exams/1`
 
-1. Run `gcp-deploy.sh`
+```json
+{
+  "name": "Kỳ thi HK1 - Cập nhật"
+}
+```
 
-### Clean up
+**Response**
+```json
+{
+  "message": "Exam updated successfully",
+  "status": true,
+  "data": {
+    "id": 1,
+    "name": "Kỳ thi HK1 - Cập nhật",
+    "code": "EXAM001",
+    "start_time": "2025-10-22T08:00:00",
+    "end_time": "2025-10-22T10:00:00"
+  }
+}
+```
 
-1. Delete Cloud Run
-2. Delete Docker image in GCR
+---
 
-## AWS
+#### ❌ Xóa kỳ thi
+**DELETE** `/exams/1`
 
-Deploying inference service to AWS Lambda
+**Response**
+```json
+{
+  "message": "Exam deleted successfully",
+  "status": true,
+  "examId": 1
+}
+```
 
-### Authenticate
+---
 
-1. Install `awscli` and `sam-cli`
-2. `aws configure`
+## 🧪 Test bằng Postman
 
-### Deploy to Lambda
+### 🧩 Tự động lưu token
+Trong tab **Tests** của request **Login**, thêm đoạn script:
 
-1. Run `sam build`
-2. Run `sam deploy --guiChange this portion for other types of models
+```javascript
+if (pm.response.code === 200) {
+    var jsonData = pm.response.json();
+    pm.environment.set("token", jsonData.access_token);
+    console.log("✅ Token đã được lưu:", jsonData.access_token);
+} else {
+    console.log("❌ Login thất bại!");
+}
+```
 
-## Add the correct type hinting when completed
+### 🔐 Gán token cho các request khác
+Trong tab **Authorization** của các API khác:
+```
+Type: Bearer Token
+Token: {{token}}
+```
 
-`aws cloudformation delete-stack --stack-name <STACK_NAME_ON_CREATION>`
+---
 
-Made by <https://github.com/arthurhenrique/cookiecutter-fastapi/graphs/contributors> with ❤️
+## 🧍‍♂️ Tác giả
+
+**Phú B2**  
+📧 Email: youremail@example.com  
+💻 Dự án cá nhân dùng để học và quản lý dữ liệu thi cử.
+
+---
+
+## 🧾 Giấy phép
+
+MIT License © 2025 Phú B2
