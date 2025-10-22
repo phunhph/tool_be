@@ -1,0 +1,37 @@
+# --- FastAPI core ---
+fastapi
+uvicorn
+
+# --- Database ---
+sqlalchemy
+alembic
+psycopg2-binary
+
+# --- Authentication & Security ---
+python-jose
+passlib[bcrypt]
+python-dotenv
+
+# --- Logging ---
+loguru
+
+# --- Google Authentication ---
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+
+# --- Machine Learning (nếu dùng phần ml\*) ---
+numpy
+joblib
+click
+
+# --- Testing ---
+pytest
+httpx
+
+# ---argon2---
+argon2_cffi
+
+python-multipart
+
+email_validator

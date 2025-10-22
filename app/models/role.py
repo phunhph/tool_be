@@ -9,4 +9,4 @@ class Role(Base):
     name = Column(String(50), unique=True, nullable=False, index=True)
     description = Column(String(255))
 
-    users = relationship("User", backref="role_obj")
+    # users = relationship("User", backref="role_obj")
