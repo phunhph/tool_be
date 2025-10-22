@@ -4,7 +4,7 @@ from typing import List
 
 from app.db import get_db
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, CreateResponse
-from app.schemas.base_schemas import DetailResponse
+from app.schemas.base_schemas import DetailResponse, ListResponse
 from app.models import User, Role
 from app.api.routes.auth import get_current_user, require_role
 from app.services.user_service import UserService
@@ -12,7 +12,7 @@ from app.services.user_service import UserService
 router = APIRouter(prefix="/users", tags=["Users"])
 
 # ---------------- GET LIST ----------------
-@router.get("/", response_model=List[UserResponse], summary="Lấy danh sách người dùng")
+@router.get("/", response_model=ListResponse[UserResponse], summary="Lấy danh sách người dùng")
 def get_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["viewer", "admin"]))

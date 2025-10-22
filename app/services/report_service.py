@@ -1,17 +1,26 @@
-import os, zipfile, datetime
+import os, zipfile
+from datetime import datetime
+from fastapi.responses import FileResponse
+import openpyxl
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
 from app.core.ai_reader import extract_report_info
 from app.models.report import Report
 from app.models.report_file import ReportFile
 from app.models.exam import Exam
 from app.schemas.base_schemas import CreateResponse, DeleteResponse, DetailResponse, ListResponse, UpdateResponse
 from app.schemas.report import ReportCreate, ReportUpdate, ReportStatus
-from datetime import datetime
+from app.services.gemini_service import GeminiService
 
 UPLOAD_ROOT = "uploads/reports"
 
+# Helper để raise lỗi chuẩn
+def raise_error(status: int, message: str):
+    from fastapi import HTTPException
+    raise HTTPException(status_code=status, detail={"status": status, "message": message})
+
 class ReportService:
+
     @staticmethod
     def get_list(db: Session, page: int = 1, page_size: int = 20):
         query = db.query(Report).order_by(Report.created_at.desc())
@@ -29,7 +38,7 @@ class ReportService:
     def get_detail(db: Session, report_id: int):
         report = db.query(Report).filter(Report.id == report_id).first()
         if not report:
-            raise HTTPException(status_code=404, detail="Report not found")
+            raise_error(404, "Report không tồn tại")
         return DetailResponse(
             status=True,
             data=ReportService.map_to_schema(report)
@@ -54,7 +63,6 @@ class ReportService:
             created_at=datetime.utcnow(),
             created_by=username
         )
-
         db.add(new_report)
         db.commit()
         db.refresh(new_report)
@@ -68,7 +76,7 @@ class ReportService:
     def update(db: Session, report_id: int, payload: ReportUpdate):
         report = db.query(Report).filter(Report.id == report_id).first()
         if not report:
-            raise HTTPException(status_code=404, detail="Report not found")
+            raise_error(404, "Report không tồn tại")
         for key, value in payload.dict(exclude_unset=True).items():
             setattr(report, key, value)
         db.commit()
@@ -83,7 +91,7 @@ class ReportService:
     def delete(db: Session, report_id: int):
         report = db.query(Report).filter(Report.id == report_id).first()
         if not report:
-            raise HTTPException(status_code=404, detail="Report not found")
+            raise_error(404, "Report không tồn tại")
         db.delete(report)
         db.commit()
         return DeleteResponse(
@@ -96,7 +104,7 @@ class ReportService:
     def upload_files(db: Session, exam_id: int, files: list[UploadFile], username: str):
         exam = db.query(Exam).filter(Exam.id == exam_id).first()
         if not exam:
-            raise HTTPException(status_code=404, detail="Exam not found")
+            raise_error(404, "Kỳ thi không tồn tại")
 
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         folder_name = f"report_{exam.code}_{timestamp}"
@@ -106,30 +114,35 @@ class ReportService:
         reports_to_commit = []
 
         for file in files:
+            # Lưu file PDF
             file_path = os.path.join(folder_path, file.filename)
             with open(file_path, "wb") as f:
                 f.write(file.file.read())
 
-            info = extract_report_info(file_path)
+            # Gọi GeminiService để trích xuất info
+            with open(file_path, "rb") as f:
+                pdf_bytes = f.read()
+            info = GeminiService.extract_info_from_pdf(pdf_bytes)
 
+            # Lưu Report vào DB
             report = Report(
-                name=info.get("name", file.filename),
-                student_code=info.get("student_code", "UNKNOWN"),
-                major=info.get("major"),
-                position=info.get("position"),
-                strengths=info.get("strengths"),
-                weaknesses=info.get("weaknesses"),
-                proposal=info.get("proposal"),
-                attitude_score=info.get("attitude_score"),
-                work_score=info.get("work_score"),
-                note=info.get("note"),
+                name=info.get("Họ và tên", file.filename),
+                student_code=info.get("MSSV", "UNKNOWN"),
+                major=info.get("Ngành"),
+                position=info.get("Vị trí thực tập"),
+                strengths=info.get("Ưu điểm"),
+                weaknesses=info.get("Nhược điểm"),
+                proposal=info.get("Đề xuất"),
+                attitude_score=info.get("Điểm thái độ"),
+                work_score=info.get("Điểm công việc"),
+                note=info.get("Đánh giá cuối cùng"),
                 status=ReportStatus.completed,
                 created_by=username,
                 exam_id=exam_id,
                 created_at=datetime.utcnow()
             )
             db.add(report)
-            db.flush()  # flush để lấy id trước khi add files
+            db.flush()
 
             db.add(ReportFile(
                 name_file=file.filename,
@@ -139,9 +152,8 @@ class ReportService:
 
             reports_to_commit.append(report)
 
-        db.commit()  # commit tất cả cùng lúc
+        db.commit()
 
-        # Nén thư mục
         zip_name = f"{folder_name}.zip"
         zip_path = os.path.join(UPLOAD_ROOT, zip_name)
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
@@ -153,10 +165,67 @@ class ReportService:
         return {"message": "Upload và xử lý thành công", "zip_file": zip_name}
 
     @staticmethod
+    def export_by_exam(db: Session, exam_id: int):
+        exam = db.query(Exam).filter(Exam.id == exam_id).first()
+        if not exam:
+            raise_error(404, "Kỳ thi không tồn tại")
+
+        reports = db.query(Report).filter(Report.exam_id == exam_id).all()
+        if not reports:
+            raise_error(404, "Không có báo cáo nào cho kỳ thi này")
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = f"Report_{exam.code}"
+
+        headers = [
+            "ID", "Họ tên", "Mã sinh viên", "Ngành", "Vị trí",
+            "Điểm mạnh", "Điểm yếu", "Đề xuất", "Ghi chú",
+            "Điểm thái độ", "Điểm công việc", "Trạng thái", "Ngày tạo"
+        ]
+        ws.append(headers)
+
+        status_map = {
+            ReportStatus.pending: "Pending",
+            ReportStatus.completed: "Completed"
+        }
+
+        for r in reports:
+            ws.append([
+                r.id,
+                r.name,
+                r.student_code,
+                r.major,
+                r.position,
+                r.strengths,
+                r.weaknesses,
+                r.proposal,
+                r.note,
+                r.attitude_score,
+                r.work_score,
+                status_map.get(r.status, r.status),
+                r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else ""
+            ])
+
+        from openpyxl.utils import get_column_letter
+        for i, col in enumerate(ws.columns, 1):
+            max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
+            ws.column_dimensions[get_column_letter(i)].width = max_length + 2
+
+        export_folder = "uploads/export"
+        os.makedirs(export_folder, exist_ok=True)
+        file_name = f"report_exam_{exam.code}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        file_path = os.path.join(export_folder, file_name)
+        wb.save(file_path)
+
+        return FileResponse(
+            path=file_path,
+            filename=file_name,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    @staticmethod
     def map_to_schema(report: Report):
-        """
-        Map Report SQLAlchemy object → Pydantic schema để tránh ResponseValidationError
-        """
         return {
             "id": report.id,
             "name": report.name,

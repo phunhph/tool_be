@@ -4,6 +4,9 @@ from app.models.exam import Exam
 from app.schemas.exam import ExamCreate, ExamUpdate, CreateResponse, UpdateResponse, DeleteResponse, ExamResponse
 from app.schemas.base_schemas import ListResponse, DetailResponse
 
+def raise_error(status: int, message: str):
+    raise HTTPException(status_code=status, detail={"status": status, "message": message})
+
 class ExamService:
 
     @staticmethod
@@ -14,16 +17,15 @@ class ExamService:
         return ListResponse(
             data=exams,
             total=total,
-            pageSize=page_size,   # 🔹 camelCase
-            pageIndex=page        # 🔹 camelCase
+            pageSize=page_size,
+            pageIndex=page
         )
-
 
     @staticmethod
     def get_detail(db: Session, exam_id: int) -> DetailResponse[ExamResponse]:
         exam = db.query(Exam).filter(Exam.id == exam_id, Exam.is_delete == False).first()
         if not exam:
-            raise HTTPException(status_code=404, detail="Không tìm thấy kỳ thi")
+            raise_error(404, "Kỳ thi không tồn tại")
         return DetailResponse(
             status=True,
             data=exam
@@ -33,7 +35,7 @@ class ExamService:
     def create(db: Session, payload: ExamCreate) -> CreateResponse:
         exists = db.query(Exam).filter(Exam.code == payload.code).first()
         if exists:
-            raise HTTPException(status_code=400, detail="Mã kỳ thi đã tồn tại")
+            raise_error(400, "Mã kỳ thi đã tồn tại")
         exam = Exam(**payload.dict())
         db.add(exam)
         db.commit()
@@ -48,7 +50,7 @@ class ExamService:
     def update(db: Session, exam_id: int, payload: ExamUpdate) -> UpdateResponse:
         exam = db.query(Exam).filter(Exam.id == exam_id, Exam.is_delete == False).first()
         if not exam:
-            raise HTTPException(status_code=404, detail="Không tìm thấy kỳ thi")
+            raise_error(404, "Kỳ thi không tồn tại")
         for key, value in payload.dict(exclude_unset=True).items():
             setattr(exam, key, value)
         db.commit()
@@ -63,7 +65,7 @@ class ExamService:
     def delete(db: Session, exam_id: int) -> DeleteResponse:
         exam = db.query(Exam).filter(Exam.id == exam_id, Exam.is_delete == False).first()
         if not exam:
-            raise HTTPException(status_code=404, detail="Không tìm thấy kỳ thi")
+            raise_error(404, "Kỳ thi không tồn tại")
         exam.is_delete = True
         db.commit()
         return DeleteResponse(

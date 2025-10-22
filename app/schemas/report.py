@@ -46,3 +46,12 @@ class ReportResponse(ReportBase):
 
     class Config:
         from_attributes = True
+
+class ReportFileSchema(BaseModel):
+    id: int
+    name_file: str
+    path_storage: str
+    created_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True

@@ -72,7 +72,7 @@ cd tool_be
 
 ### 2️⃣ Cài đặt thư viện
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt || python -m ip install -r requirements.txt 
 ```
 
 ### 3️⃣ Tạo file môi trường `.env`
@@ -85,7 +85,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=60
 
 ### 4️⃣ Chạy migration
 ```bash
-alembic upgrade head
+alembic upgrade head ||  python -m alembic upgrade head 
 ```
 
 ### 5️⃣ Chạy sending
@@ -95,7 +95,7 @@ alembic upgrade head
 
 ### 5️⃣ Chạy server
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload ||  python -m uvicorn app.main:app 
 ```
 
 API chạy tại: 👉 [http://localhost:8000/docs](http://localhost:8000/docs)
