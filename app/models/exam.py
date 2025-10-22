@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from app.db import Base
+from sqlalchemy.orm import relationship
 
 class Exam(Base):
     __tablename__ = "exams"
@@ -10,3 +11,5 @@ class Exam(Base):
     start_time = Column(DateTime, nullable=False)  
     end_time = Column(DateTime, nullable=False)    
     is_delete = Column(Boolean, default=False)     
+
+    reports = relationship("Report", back_populates="exam", cascade="all, delete")
