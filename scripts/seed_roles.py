@@ -33,7 +33,8 @@ def seed_users(db: Session):
             email="master@example.com",
             password=pwd_context.hash("Master123!"),
             role_id=master_role.id,
-            is_delete=False
+            is_delete=False,
+            role = master_role
         )
         db.add(user)
 

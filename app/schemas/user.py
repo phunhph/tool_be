@@ -33,7 +33,7 @@ class UserResponse(BaseModel):
     is_delete: bool
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class CreateResponse(BaseModel):
     message: str

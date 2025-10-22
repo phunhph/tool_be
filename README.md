@@ -17,30 +17,36 @@ Hệ thống quản lý kỳ thi (Exam Management) được xây dựng bằng *
 
 ## 📁 Cấu trúc thư mục
 
-app/
- ├── main.py                     # Điểm khởi chạy ứng dụng FastAPI
- ├── core/
- │   ├── security.py             # Xử lý JWT, mã hóa mật khẩu
- │   └── config.py               # Cấu hình ứng dụng
- ├── models/
- │   ├── user.py                 # Model User
- │   ├── role.py                 # Model Role
- │   └── exam.py                 # Model Exam
- ├── schemas/
- │   ├── base_schemas.py         # Các schema cơ bản (ListResponse, CreateResponse,…)
- │   └── exam_schemas.py         # Schema cho module Exam
- ├── services/
- │   ├── auth_service.py         # Đăng nhập, tạo token
- │   ├── user_service.py         # CRUD User
- │   └── exam_service.py         # CRUD Exam
- ├── api/
- │   ├── auth_api.py             # Endpoint: /auth/login
- │   ├── exam_api.py             # Endpoint: /exams
- │   └── user_api.py             # Endpoint: /users
- ├── database/
- │   ├── base.py                 # Base class cho SQLAlchemy
- │   └── session.py              # Khởi tạo session DB
- └── tests/                      # Unit test bằng pytest
+pp/
+├── main.py # Điểm khởi chạy ứng dụng FastAPI
+├── core/ # Cấu hình & bảo mật
+│ ├── security.py # Xử lý JWT, mã hóa mật khẩu
+│ └── config.py # Cấu hình ứng dụng
+│
+├── models/ # Các model SQLAlchemy
+│ ├── user.py # Model User
+│ ├── role.py # Model Role
+│ └── exam.py # Model Exam
+│
+├── schemas/ # Các schema (Pydantic)
+│ ├── base_schemas.py # Các schema cơ bản (ListResponse, CreateResponse,…)
+│ └── exam_schemas.py # Schema cho module Exam
+│
+├── services/ # Xử lý logic CRUD và nghiệp vụ
+│ ├── auth_service.py # Đăng nhập, tạo token
+│ ├── user_service.py # CRUD User
+│ └── exam_service.py # CRUD Exam
+│
+├── api/ # Định nghĩa các endpoint
+│ ├── auth_api.py # Endpoint: /auth/login
+│ ├── exam_api.py # Endpoint: /exams
+│ └── user_api.py # Endpoint: /users
+│
+├── database/ # Cấu hình cơ sở dữ liệu
+│ ├── base.py # Base class cho SQLAlchemy
+│ └── session.py # Khởi tạo session DB
+│
+└── tests/ # Unit test bằng pytest                    # Unit test bằng pytest
 
 ---
 
@@ -49,10 +55,8 @@ app/
 | Role         | Mô tả                              | Quyền hạn chính |
 |---------------|------------------------------------|------------------|
 | **master**    | Tài khoản quản trị cao nhất        | Full quyền (CRUD users, roles, exams) |
-| **create**    | Người tạo dữ liệu                  | Chỉ được `POST` và `GET` |
-| **update**    | Người chỉnh sửa dữ liệu            | Chỉ được `PUT` và `GET` |
+| **Admin**     | Có thể xem, tạo, sửa, xóa trừ thay đổi quyền và xoá user             | Chỉ được `POST`, `PUT` và `GET` |
 | **view+export** | Người xem & xuất dữ liệu          | Chỉ được `GET` |
-| **normal**    | Người dùng thông thường            | Hạn chế quyền |
 
 > ⚠️ Chỉ `role: master` mới được chỉnh sửa quyền người dùng khác.
 
@@ -62,8 +66,8 @@ app/
 
 ### 1️⃣ Clone project
 ```bash
-git clone https://github.com/yourname/exam-api.git
-cd exam-api
+git https://github.com/phunhph/tool_be
+cd tool_be
 ```
 
 ### 2️⃣ Cài đặt thư viện
@@ -84,6 +88,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES=60
 alembic upgrade head
 ```
 
+### 5️⃣ Chạy sending
+```bash
+ python -m scripts.seed_roles
+```
+
 ### 5️⃣ Chạy server
 ```bash
 uvicorn app.main:app --reload
@@ -97,7 +106,7 @@ API chạy tại: 👉 [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ### 🔑 **Đăng nhập**
 
-**POST** `/auth/login`
+**POST** `api/auth/login`
 
 **Body**
 ```json
@@ -120,7 +129,7 @@ API chạy tại: 👉 [http://localhost:8000/docs](http://localhost:8000/docs)
 ### 📚 **Exam API**
 
 #### ➕ Tạo mới kỳ thi
-**POST** `/exams`
+**POST** `/api/exams`
 
 ```json
 {
@@ -143,7 +152,7 @@ API chạy tại: 👉 [http://localhost:8000/docs](http://localhost:8000/docs)
 ---
 
 #### 📋 Danh sách kỳ thi
-**GET** `/exams?page=1&page_size=10`
+**GET** `/api/users?page=1&page_size=10`
 
 **Response**
 ```json
@@ -166,7 +175,7 @@ API chạy tại: 👉 [http://localhost:8000/docs](http://localhost:8000/docs)
 ---
 
 #### ✏️ Cập nhật kỳ thi
-**PUT** `/exams/1`
+**PUT** `api/exams/1`
 
 ```json
 {
@@ -192,7 +201,7 @@ API chạy tại: 👉 [http://localhost:8000/docs](http://localhost:8000/docs)
 ---
 
 #### ❌ Xóa kỳ thi
-**DELETE** `/exams/1`
+**DELETE** `api/exams/1`
 
 **Response**
 ```json
@@ -231,12 +240,12 @@ Token: {{token}}
 
 ## 🧍‍♂️ Tác giả
 
-**Phú B2**  
-📧 Email: youremail@example.com  
+**Nguyễn Hữu Phú(PhuNH)**  
+📧 Email: phunh@hblab.vn  
 💻 Dự án cá nhân dùng để học và quản lý dữ liệu thi cử.
 
 ---
 
 ## 🧾 Giấy phép
 
-MIT License © 2025 Phú B2
+MIT License © 2025 Nguyễn Hữu Phú(PhuNH)
