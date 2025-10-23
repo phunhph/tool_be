@@ -2,9 +2,23 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from collections import defaultdict
 from app.api.routes.api import router as api_router
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="BE Tool API", description="Backend Tool API for internal management")
 app.include_router(api_router, prefix="/api")
+
+origins = [
+    "http://localhost:3000",
+    "http://localhost:8000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,             
+    allow_credentials=True,          
+    allow_methods=["*"],               
+    allow_headers=["*"],            
+)
 
 @app.get("/", summary="Danh sách API theo module")
 async def root():
