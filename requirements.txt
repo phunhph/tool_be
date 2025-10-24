@@ -1,37 +1,44 @@
-# --- FastAPI core ---
+# FastAPI & Server
 fastapi
 uvicorn
 
-# --- Database ---
+# Database & ORM
 sqlalchemy
 alembic
-psycopg2-binary
+psycopg2-binary # Cho PostgreSQL (nếu dùng)
 
-# --- Authentication & Security ---
-python-jose
-passlib[bcrypt]
-python-dotenv
+# Authentication, Security & Environment
+passlib[bcrypt]  # Hashing mật khẩu
+python-jose      # JWT (JSON Web Tokens)
+argon2-cffi      # Argon2 Hashing
+python-dotenv    # Quản lý biến môi trường (.env)
 
-# --- Logging ---
+# Input/Output & Validation
+python-multipart # Xử lý dữ liệu form/file upload (cho FastAPI)
+email-validator  # Xác thực email
+openpyxl         # Xử lý file Excel
+
+# Logging
 loguru
 
-# --- Google Authentication ---
-google-auth
-google-auth-oauthlib
+# Google & Gemini AI Services
+google-auth              # Core Google Auth
+google-auth-oauthlib     # Auth OAuth 2.0
 google-auth-httplib2
+google-genai             # Gemini API SDK
 
-# --- Machine Learning (nếu dùng phần ml\*) ---
-numpy
-joblib
-click
+# Document Processing & OCR/NLP
+pymupdf                  # Xử lý PDF (FitZ)
+pdf2image                # Chuyển PDF sang Image (dùng cho pytesseract fallback)
+pytesseract              # OCR Fallback (cần cài đặt Tesseract OS)
 
-# --- Testing ---
+# Machine Learning & Plagiarism Check (Logic nghiệp vụ cốt lõi)
+sentence-transformers    # Tạo embeddings (vector nhúng)
+scikit-learn             # Tính Cosine Similarity
+numpy                    # Thư viện tính toán cơ bản (thường là dependency của các ML lib)
+joblib                   # Dùng để lưu/tải các mô hình ML (nếu có)
+click                    # Tạo CLI (dùng cho scripts/ml)
+
+# Testing & Development
 pytest
 httpx
-
-# ---argon2---
-argon2_cffi
-
-python-multipart
-
-email_validator

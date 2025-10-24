@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 from enum import Enum
+from pydantic import BaseModel, Field
 
 class ReportStatus(str, Enum):
     pending = "pending"
@@ -55,3 +56,17 @@ class ReportFileSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+class ReportInfoSchema(BaseModel):
+    name: str = Field(description="Tên sinh viên/người làm báo cáo.")
+    student_code: str = Field(description="Mã số sinh viên.")
+    major: str = Field(description="Ngành học/Bộ phận.")
+    position: str = Field(description="Vị trí thực tập/công việc.")
+    strengths: str = Field(description="Ưu điểm/điểm mạnh đã nhận dạng.")
+    weaknesses: str = Field(description="Nhược điểm/điểm yếu đã nhận dạng.")
+    proposal: str = Field(description="Đề xuất/Kiến nghị.")
+    attitude_score: float = Field(description="Điểm thái độ (chỉ lấy số).")
+    work_score: float = Field(description="Điểm công việc/kết quả (chỉ lấy số).")
+    note: str = Field(description="Tóm tắt nhận xét hoặc bất kỳ thông tin quan trọng nào khác.")
+    # Trường quan trọng để kiểm tra đạo văn
+    raw_content: str = Field(description="Toàn bộ nội dung báo cáo công việc hàng tuần được trích xuất.")

@@ -10,7 +10,7 @@ from app.models.report_file import ReportFile
 from app.models.exam import Exam
 from app.schemas.base_schemas import CreateResponse, DeleteResponse, DetailResponse, ListResponse, UpdateResponse
 from app.schemas.report import ReportCreate, ReportUpdate, ReportStatus
-from app.services.gemini_service import GeminiService
+from app.services.gemini_service import GeminiService, PLAGIARISM_THRESHOLD
 
 UPLOAD_ROOT = "uploads/reports"
 
@@ -165,64 +165,117 @@ class ReportService:
         return {"message": "Upload và xử lý thành công", "zip_file": zip_name}
 
     @staticmethod
-    def export_by_exam(db: Session, exam_id: int):
+    def upload_files(db: Session, exam_id: int, files: list[UploadFile], username: str):
+        """
+        Tải lên file, trích xuất thông tin, lưu DB, kiểm tra đạo văn và nén file.
+        """
         exam = db.query(Exam).filter(Exam.id == exam_id).first()
         if not exam:
-            raise_error(404, "Kỳ thi không tồn tại")
+            # Thay thế bằng hàm raise_error thực tế của bạn
+            # raise_error(404, "Kỳ thi không tồn tại") 
+            raise ValueError("Kỳ thi không tồn tại") 
 
-        reports = db.query(Report).filter(Report.exam_id == exam_id).all()
-        if not reports:
-            raise_error(404, "Không có báo cáo nào cho kỳ thi này")
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        folder_name = f"report_{exam.code}_{timestamp}"
+        folder_path = os.path.join(UPLOAD_ROOT, folder_name)
+        os.makedirs(folder_path, exist_ok=True)
 
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = f"Report_{exam.code}"
+        reports_to_check = [] # Dùng để lưu các báo cáo mới cần kiểm tra đạo văn
 
-        headers = [
-            "ID", "Họ tên", "Mã sinh viên", "Ngành", "Vị trí",
-            "Điểm mạnh", "Điểm yếu", "Đề xuất", "Ghi chú",
-            "Điểm thái độ", "Điểm công việc", "Trạng thái", "Ngày tạo"
-        ]
-        ws.append(headers)
+        for file in files:
+            # Lưu file PDF
+            file_path = os.path.join(folder_path, file.filename)
+            # Đọc nội dung file trước khi đóng và lưu
+            file_content = file.file.read() 
+            
+            with open(file_path, "wb") as f:
+                f.write(file_content)
 
-        status_map = {
-            ReportStatus.pending: "Pending",
-            ReportStatus.completed: "Completed"
+            # Gọi GeminiService để trích xuất info (dùng nội dung file đã đọc)
+            info = GeminiService.extract_info_from_pdf(file_content) 
+
+            # 1. LƯU REPORT VÀ THU THẬP NỘI DUNG THÔ
+            report = Report(
+                name=info.get("Họ và tên", file.filename),
+                student_code=info.get("MSSV", "UNKNOWN"),
+                major=info.get("Ngành"),
+                position=info.get("Vị trí thực tập"),
+                strengths=info.get("Ưu điểm"),
+                weaknesses=info.get("Nhược điểm"),
+                proposal=info.get("Đề xuất"),
+                attitude_score=float(info.get("Điểm thái độ", 0) or 0), # Chuẩn hoá float
+                work_score=float(info.get("Điểm công việc", 0) or 0),   # Chuẩn hoá float
+                note=info.get("Đánh giá cuối cùng"),
+                raw_content=info.get("Nội dung báo cáo thô", ""), # 👈 LƯU NỘI DUNG THÔ
+                status=ReportStatus.checked,
+                created_by="test",
+                exam_id=exam_id,
+                created_at=datetime.utcnow()
+            )
+            db.add(report)
+            db.flush() # Lấy report.id
+
+            db.add(ReportFile(
+                name_file=file.filename,
+                path_storage=file_path,
+                report_id=report.id
+            ))
+
+            # Thu thập thông tin để kiểm tra đạo văn sau khi commit
+            reports_to_check.append({
+                "report_id": report.id,
+                "filename": file.filename,
+                "content": info.get("Nội dung báo cáo thô", "")
+            })
+
+        db.commit() # Commit tất cả Report và ReportFile
+
+        # 2. KIỂM TRA ĐẠO VĂN (So sánh giữa các file mới)
+        print("\n--- Bắt đầu Kiểm tra Đạo văn giữa các file mới ---")
+        plagiarism_detected = []
+        
+        for i in range(len(reports_to_check)):
+            for j in range(i + 1, len(reports_to_check)):
+                report1 = reports_to_check[i]
+                report2 = reports_to_check[j]
+                
+                score = GeminiService.check_plagiarism_similarity(report1["content"], report2["content"])
+                
+                if score >= PLAGIARISM_THRESHOLD:
+                    # 3. Ghi nhận kết quả đạo văn
+                    plagiarism_detected.append({
+                        "file_1": report1["filename"],
+                        "file_2": report2["filename"],
+                        "score": f"{score:.4f}",
+                        "id_1": report1["report_id"],
+                        "id_2": report2["report_id"]
+                    })
+                    
+                    # CẬP NHẬT TRẠNG THÁI REPORT (Nếu cần)
+                    # Ví dụ: đánh dấu cờ đạo văn trong DB hoặc thêm ghi chú vào Report
+                    db.query(Report).filter(Report.id.in_([report1["report_id"], report2["report_id"]])).update(
+                        {"note": Report.note + f" | ⚠️ Cảnh báo Đạo văn (Score: {score:.2f} vs {report2['filename']})"}, 
+                        synchronize_session='fetch'
+                    )
+                    db.commit() # Commit cập nhật ghi chú/cờ
+
+        # 4. Nén thư mục và Trả về kết quả
+        zip_name = f"{folder_name}.zip"
+        zip_path = os.path.join(UPLOAD_ROOT, zip_name)
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for root, _, files_in_folder in os.walk(folder_path):
+                for f in files_in_folder:
+                    path = os.path.join(root, f)
+                    zipf.write(path, os.path.relpath(path, folder_path))
+
+        if plagiarism_detected:
+            print(f"🚨 Phát hiện {len(plagiarism_detected)} cặp file có dấu hiệu đạo văn.")
+
+        return {
+            "message": "Upload, xử lý, và kiểm tra đạo văn thành công", 
+            "zip_file": zip_name, 
+            "plagiarism_results": plagiarism_detected
         }
-
-        for r in reports:
-            ws.append([
-                r.id,
-                r.name,
-                r.student_code,
-                r.major,
-                r.position,
-                r.strengths,
-                r.weaknesses,
-                r.proposal,
-                r.note,
-                r.attitude_score,
-                r.work_score,
-                status_map.get(r.status, r.status),
-                r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else ""
-            ])
-
-        from openpyxl.utils import get_column_letter
-        for i, col in enumerate(ws.columns, 1):
-            max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
-            ws.column_dimensions[get_column_letter(i)].width = max_length + 2
-
-        export_folder = "uploads/export"
-        os.makedirs(export_folder, exist_ok=True)
-        file_name = f"report_exam_{exam.code}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        file_path = os.path.join(export_folder, file_name)
-        wb.save(file_path)
-
-        return FileResponse(
-            path=file_path,
-            filename=file_name,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
 
     @staticmethod
     def map_to_schema(report: Report):

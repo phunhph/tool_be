@@ -21,6 +21,7 @@ class Report(Base):
     proposal = Column(Text)
     attitude_score = Column(Integer)
     work_score = Column(Integer)
+    raw_content = Column(Text, comment="Nội dung báo cáo công việc thô, dùng cho kiểm tra đạo văn")
     note = Column(Text)
     status = Column(
         Enum(ReportStatus, native_enum=False, create_type=False),
