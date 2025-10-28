@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
 from pydantic import BaseModel, Field
@@ -70,3 +70,9 @@ class ReportInfoSchema(BaseModel):
     note: str = Field(description="Tóm tắt nhận xét hoặc bất kỳ thông tin quan trọng nào khác.")
     # Trường quan trọng để kiểm tra đạo văn
     raw_content: str = Field(description="Toàn bộ nội dung báo cáo công việc hàng tuần được trích xuất.")
+
+class UploadReportOutput(BaseModel):
+    extracted_reports: List[Dict[str, Any]]
+    plagiarism_results: List[Dict[str, Any]]
+    zip_file: str
+    message: str

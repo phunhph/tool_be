@@ -42,3 +42,9 @@ click                    # Tạo CLI (dùng cho scripts/ml)
 # Testing & Development
 pytest
 httpx
+
+Flask-CORS
+google-genai
+celery
+redis
+eventlet

@@ -72,7 +72,7 @@ cd tool_be
 
 ### 2️⃣ Cài đặt thư viện
 ```bash
-pip install -r requirements.txt || python -m ip install -r requirements.txt 
+pip install -r requirements.txt || python -m pip install -r requirements.txt 
 ```
 
 ### 3️⃣ Tạo file môi trường `.env`
@@ -95,9 +95,11 @@ alembic upgrade head ||  python -m alembic upgrade head
 
 ### 5️⃣ Chạy server
 ```bash
-uvicorn app.main:app --reload ||  python -m uvicorn app.main:app 
+uvicorn app.main:app --reload ||  python -m uvicorn app.main:app  --reload 
 ```
-
+# 🚨 DÙNG EVENTLET (hoặc gevent)
+celery -A app.core.celery_app worker -P eventlet --loglevel=info -c 5 || python -m celery -A app.core.celery_app worker -P eventlet --loglevel=info -c 5
+python -m celery -A app.core.celery_app worker -P solo --loglevel=info
 API chạy tại: 👉 [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ---
