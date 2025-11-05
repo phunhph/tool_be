@@ -1,78 +1,68 @@
-import asyncio
-from typing import Any, Dict, List
-from celery import current_task
-from app.core.celery_app import celery_app
+import redis, json, asyncio
 from app.services.websocket_manager import manager
+from app.core.celery_app import celery_app
 
-
-# Hàm helper để Celery Worker báo cáo trạng thái lên Backend
-async def update_progress(task, current_count, total_count, exam_id):
-    """Cập nhật trạng thái và tiến độ lên Celery Backend VÀ WebSocket."""
-    progress_percent = (current_count / total_count) * 100
-    task_id = task.request.id
-
-    # 1. Cập nhật Celery State
-    task.update_state(
-        state="PROGRESS",
-        meta={
-            "current": current_count,
-            "total": total_count,
-            "percent": f"{progress_percent:.2f}",
-            "exam_id": exam_id,
-        },
-    )
-
-    # 2. Gửi qua WebSocket
-    await manager.send_update_to_client(
-        task_id,
-        {"progress": progress_percent, "current": current_count, "total": total_count},
-    )
-
+r = redis.Redis(host="localhost", port=6379, db=1, decode_responses=True)
 
 @celery_app.task(bind=True)
-def process_uploaded_archive(self, exam_id: str, folder_path: str, file_metadata: list, username: str):
-    """Tác vụ Celery chạy ngầm để xử lý toàn bộ file (đồng bộ hóa async)."""
-    from app.services.report_service import ReportService  # Import ở đây để tránh vòng lặp import
-
+def process_uploaded_archive(self, exam_id: int, folder_path: str, file_metadata: list, username: str):
     task_id = self.request.id
-    total_files = len(file_metadata)
+    total_pdfs = len(file_metadata)
 
-    # Gửi thông báo trạng thái ban đầu
-    asyncio.run(manager.send_update_to_client(task_id, {
-        "status": "PROCESSING",
-        "task_id": task_id,
-        "total_files": total_files,
-    }))
+    r.sadd(f"exam:{exam_id}:tasks", task_id)
+    r.hset(f"task:{task_id}", mapping={
+        "exam_id": exam_id,
+        "username": username,
+        "status": "PENDING",
+        "pdf_total": total_pdfs,
+        "pdf_done": 0,
+        "pdf_failed": 0,
+        "pdf_pending": total_pdfs,
+        "progress": 0,
+    })
 
-    try:
-        # CHẠY HÀM async TRONG HÀM ĐỒNG BỘ
-        results = asyncio.run(
-            ReportService.run_full_processing(
-                self,
-                exam_id,
-                folder_path,
-                file_metadata,
-                update_progress
-            )
-        )
+    # Lưu danh sách file
+    for f in file_metadata:
+        filename = f.get("filename")
+        r.sadd(f"task:{task_id}:files", filename)
+        r.hset(f"task:{task_id}:file:{filename}", mapping={
+            "filename": filename,
+            "status": "PENDING",
+            "result": "",
+            "error": ""
+        })
 
-        # Gửi thông báo hoàn thành
-        asyncio.run(manager.send_update_to_client(task_id, {
-            "status": "COMPLETED",
-            "task_id": task_id,
-            "results": results["plagiarism_results"],
-            "zip_file": results["zip_file"],
-        }))
+    # Giả lập xử lý từng file PDF
+    for i, pdf in enumerate(file_metadata, start=1):
+        filename = pdf.get("filename")
 
-        return results
+        try:
+            # TODO: xử lý thực tế
+            result_text = f"Đã xử lý {filename}"
+            r.hset(f"task:{task_id}:file:{filename}", mapping={
+                "status": "DONE",
+                "result": result_text
+            })
+            r.hincrby(f"task:{task_id}", "pdf_done", 1)
 
-    except Exception as e:
-        print(f"Celery Task Failed: {e}")
+        except Exception as e:
+            r.hset(f"task:{task_id}:file:{filename}", mapping={
+                "status": "FAILED",
+                "error": str(e)
+            })
+            r.hincrby(f"task:{task_id}", "pdf_failed", 1)
 
-        asyncio.run(manager.send_update_to_client(task_id, {
-            "status": "FAILED",
-            "task_id": task_id,
-            "error": str(e),
-        }))
+        finally:
+            done = int(r.hget(f"task:{task_id}", "pdf_done"))
+            failed = int(r.hget(f"task:{task_id}", "pdf_failed"))
+            total = int(r.hget(f"task:{task_id}", "pdf_total"))
+            pending = total - done - failed
+            progress = round((done + failed) / total * 100, 2)
+            r.hset(f"task:{task_id}", mapping={
+                "pdf_pending": pending,
+                "progress": progress,
+                "status": "PROCESSING"
+            })
 
-        raise
+    r.hset(f"task:{task_id}", "status", "COMPLETED")
+    return {"task_id": task_id, "status": "COMPLETED"}

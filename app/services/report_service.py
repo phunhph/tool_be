@@ -18,7 +18,8 @@ from app.schemas.base_schemas import (
 )
 from app.services.gemini_service import GeminiService, PLAGIARISM_THRESHOLD
 from app.tasks.report_tasks import process_uploaded_archive
-
+import tempfile
+import json
 # Logging setup
 logger = logging.getLogger(__name__)
 
@@ -163,65 +164,85 @@ class ReportService:
 
     # ------------------- Hàm xử lý đa luồng chính -------------------
     @staticmethod
-    async def run_full_processing(
-        task,
-        exam_id: str,
-        folder_path: str,
-        file_metadata: List[Dict[str, Any]],
-        update_progress_fn: Callable[[Any, int, int, str], Awaitable[None]],
-    ):
-        total_files = len(file_metadata)
-        reports_data_list = []
-        files_processed = 0
-
-        logger.info(f"🔹 Bắt đầu xử lý {total_files} file cho exam {exam_id}")
-
-        loop = asyncio.get_event_loop()
-
-        # Dùng ThreadPoolExecutor để xử lý file song song
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = {
-                executor.submit(ReportService._process_single_file_task_worker, data, folder_path): data
-                for data in file_metadata
-            }
-
-            for future in as_completed(futures):
-                report_data = future.result()
-                reports_data_list.append(report_data)
-                files_processed += 1
-
-                await update_progress_fn(task, files_processed, total_files, exam_id)
-
-        # So sánh đạo văn giữa các báo cáo
-        successful_reports = [r for r in reports_data_list if r.get("status") == "SUCCESS"]
+    async def run_full_processing(task, exam_id: str, folder_path: str, file_metadata: List[Dict[str, Any]], update_progress_func):
+        """
+        Hàm xử lý chính chạy trong Celery Worker.
+        Gồm các bước:
+             Duyệt từng file PDF
+             Gọi Gemini để trích xuất thông tin
+             Kiểm tra đạo văn
+             Cập nhật tiến độ lên Redis + WebSocket
+             Nén kết quả thành ZIP
+        """
+        total = len(file_metadata)
+        processed = 0
+        results = []
         plagiarism_results = []
 
-        if len(successful_reports) <= 30:
-            for i in range(len(successful_reports)):
-                for j in range(i + 1, len(successful_reports)):
-                    r1, r2 = successful_reports[i], successful_reports[j]
-                    sim = await GeminiService.is_plagiarized(
-                        r1.get("raw_content", ""), r2.get("raw_content", "")
+        # Tạo folder tạm cho output
+        temp_output_dir = tempfile.mkdtemp(prefix=f"reports_{exam_id}_")
+
+        for file_info in file_metadata:
+            try:
+                filename = file_info["filename"]
+                file_path = os.path.join(folder_path, filename)
+
+                # --- Đọc file ---
+                with open(file_path, "rb") as f:
+                    pdf_bytes = f.read()
+
+                # --- Trích xuất dữ liệu từ Gemini ---
+                extracted = GeminiService.extract_info_from_pdf(pdf_bytes)
+                extracted["filename"] = filename
+                results.append(extracted)
+
+                processed += 1
+
+                # --- Gửi tiến độ ---
+                await update_progress_func(task, processed, total, exam_id)
+
+            except Exception as e:
+                print(f"[ERROR] Lỗi xử lý file {filename}: {e}")
+                continue
+
+        # --- Kiểm tra đạo văn (nếu có >1 file) ---
+        if len(results) > 1:
+            for i in range(len(results)):
+                for j in range(i + 1, len(results)):
+                    sim = GeminiService.check_plagiarism_similarity(
+                        results[i].get("Nội dung báo cáo thô", ""),
+                        results[j].get("Nội dung báo cáo thô", "")
                     )
+                    if sim >= 0.75:
+                        plagiarism_results.append({
+                            "file_a": results[i]["filename"],
+                            "file_b": results[j]["filename"],
+                            "similarity": round(sim, 3)
+                        })
 
-                    if sim >= PLAGIARISM_THRESHOLD:
-                        plagiarism_results.append(
-                            {
-                                "file_1": r1["original_filename"],
-                                "file_2": r2["original_filename"],
-                                "similarity": f"{sim * 100:.2f}%",
-                                "status": "PLAGIARIZED",
-                            }
-                        )
+        # --- Ghi kết quả ra JSON ---
+        output_json_path = os.path.join(temp_output_dir, "summary.json")
+        with open(output_json_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "exam_id": exam_id,
+                "results": results,
+                "plagiarism_results": plagiarism_results
+            }, f, ensure_ascii=False, indent=2)
 
-        # Cleanup
-        shutil.rmtree(folder_path, ignore_errors=True)
-        logger.info(f"✅ Xử lý hoàn tất cho exam {exam_id}, đã dọn thư mục tạm.")
+        # --- Nén thành ZIP ---
+        zip_output_path = os.path.join(temp_output_dir, f"exam_{exam_id}_result.zip")
+        with zipfile.ZipFile(zip_output_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for root, _, files in os.walk(temp_output_dir):
+                for file in files:
+                    zipf.write(os.path.join(root, file), file)
 
+        # --- Gửi tiến độ hoàn tất ---
+        await update_progress_func(task, total, total, exam_id)
+
+        # --- Trả kết quả cuối cùng cho Celery backend ---
         return {
-            "all_reports": reports_data_list,
             "plagiarism_results": plagiarism_results,
-            "zip_file": f"results_{exam_id}.zip",
+            "zip_file": zip_output_path
         }
 
     # ------------------- Nhận file ZIP và khởi tạo task -------------------

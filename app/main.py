@@ -2,9 +2,12 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from collections import defaultdict
 from app.api.routes.api import router as api_router
+from app.api.routes.ws_router import ws_router
 from fastapi.middleware.cors import CORSMiddleware
 
+
 app = FastAPI(title="BE Tool API", description="Backend Tool API for internal management")
+app.include_router(ws_router) 
 app.include_router(api_router, prefix="/api")
 
 origins = [
@@ -15,7 +18,7 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,             
+    allow_origins=["*"],             
     allow_credentials=True,          
     allow_methods=["*"],               
     allow_headers=["*"],            
