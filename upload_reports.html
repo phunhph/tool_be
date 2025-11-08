@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Báo Cáo - Tool BE</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        input[type="file"] {
+            padding: 10px;
+            cursor: pointer;
+        }
+
+        .file-info {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .result.success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+
+        .result.error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+
+        .result.info {
+            background: #d1ecf1;
+            border: 2px solid #17a2b8;
+            color: #0c5460;
+        }
+
+        .result h3 {
+            margin-bottom: 10px;
+        }
+
+        .result pre {
+            background: rgba(0, 0, 0, 0.1);
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+
+        .task-status {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .status-item:last-child {
+            border-bottom: none;
+        }
+
+        .status-label {
+            font-weight: 600;
+            color: #666;
+        }
+
+        .status-value {
+            color: #333;
+        }
+
+        .status-value.success {
+            color: #28a745;
+        }
+
+        .status-value.error {
+            color: #dc3545;
+        }
+
+        .status-value.processing {
+            color: #ffc107;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .files-list {
+            margin-top: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .file-item {
+            padding: 8px;
+            background: white;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .file-status.done {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .file-status.failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .file-status.pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📤 Upload Báo Cáo</h1>
+        <p class="subtitle">Upload file ZIP chứa các file PDF báo cáo để xử lý</p>
+
+        <form id="uploadForm">
+            <div class="form-group">
+                <label for="examId">Exam ID *</label>
+                <input type="number" id="examId" name="examId" required placeholder="Nhập ID của kỳ thi">
+            </div>
+
+            <div class="form-group">
+                <label for="token">Access Token *</label>
+                <input type="text" id="token" name="token" required placeholder="Nhập JWT token (lấy từ /api/auth/login)">
+                <small style="color: #666; font-size: 12px;">
+                    Lấy token từ API đăng nhập: POST /api/auth/login
+                    <br>
+                    <a href="login.html" target="_blank" style="color: #667eea;">🔐 Đăng nhập để lấy token tự động</a>
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label for="zipFile">File ZIP *</label>
+                <input type="file" id="zipFile" name="zipFile" accept=".zip" required>
+                <div class="file-info" id="fileInfo" style="display: none;"></div>
+            </div>
+
+            <button type="submit" class="btn" id="uploadBtn">
+                <span id="btnText">Upload File</span>
+            </button>
+        </form>
+
+        <!-- Progress Bar -->
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill">0%</div>
+            </div>
+            <p style="text-align: center; color: #666; font-size: 14px;" id="progressText">Đang upload...</p>
+        </div>
+
+        <!-- Result -->
+        <div class="result" id="result"></div>
+
+        <!-- Task Status -->
+        <div class="task-status" id="taskStatus">
+            <h3>📊 Trạng thái xử lý</h3>
+            <div id="statusContent"></div>
+            <button class="btn btn-secondary" id="checkStatusBtn" onclick="checkTaskStatus()">🔄 Làm mới trạng thái</button>
+        </div>
+    </div>
+
+    <script>
+        let API_BASE_URL = 'http://localhost:8000/api';
+        let currentTaskId = null;
+        let statusCheckInterval = null;
+
+        // Hiển thị thông tin file
+        document.getElementById('zipFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const fileInfo = document.getElementById('fileInfo');
+                const fileSize = (file.size / 1024 / 1024).toFixed(2);
+                fileInfo.innerHTML = `
+                    <strong>Tên file:</strong> ${file.name}<br>
+                    <strong>Kích thước:</strong> ${fileSize} MB<br>
+                    <strong>Loại file:</strong> ${file.type || 'application/zip'}
+                `;
+                fileInfo.style.display = 'block';
+            }
+        });
+
+        // Xử lý submit form
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const examId = document.getElementById('examId').value;
+            const token = document.getElementById('token').value;
+            const fileInput = document.getElementById('zipFile');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                showResult('error', 'Vui lòng chọn file ZIP');
+                return;
+            }
+
+            // Disable button
+            const uploadBtn = document.getElementById('uploadBtn');
+            uploadBtn.disabled = true;
+            document.getElementById('btnText').innerHTML = '<span class="loading"></span> Đang upload...';
+
+            // Show progress
+            document.getElementById('progressContainer').style.display = 'block';
+            updateProgress(0, 'Đang chuẩn bị upload...');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const xhr = new XMLHttpRequest();
+
+                // Upload progress
+                xhr.upload.addEventListener('progress', function(e) {
+                    if (e.lengthComputable) {
+                        const percentComplete = (e.loaded / e.total) * 100;
+                        updateProgress(percentComplete, `Đang upload: ${percentComplete.toFixed(1)}%`);
+                    }
+                });
+
+                // Load complete
+                xhr.addEventListener('load', function() {
+                    if (xhr.status === 200) {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            handleUploadSuccess(response, examId, token);
+                        } catch (e) {
+                            showResult('error', `Lỗi parse response: ${e.message}`);
+                            resetUploadButton();
+                        }
+                    } else {
+                        try {
+                            const error = JSON.parse(xhr.responseText);
+                            // Xử lý nhiều format error
+                            let errorMessage = '';
+                            if (typeof error.detail === 'string') {
+                                errorMessage = error.detail;
+                            } else if (typeof error.detail === 'object' && error.detail.message) {
+                                errorMessage = error.detail.message;
+                            } else if (error.detail) {
+                                errorMessage = JSON.stringify(error.detail);
+                            } else if (error.message) {
+                                errorMessage = error.message;
+                            } else {
+                                errorMessage = xhr.statusText || 'Unknown error';
+                            }
+                            showResult('error', `Lỗi ${xhr.status}: ${errorMessage}`);
+                        } catch (e) {
+                            showResult('error', `Lỗi ${xhr.status}: ${xhr.statusText || 'Unknown error'}`);
+                        }
+                        resetUploadButton();
+                    }
+                });
+
+                // Error handler
+                xhr.addEventListener('error', function() {
+                    showResult('error', `Lỗi kết nối đến server. Kiểm tra:<br>
+                        1. Server đã chạy chưa? (${API_BASE_URL.replace('/api', '')})<br>
+                        2. CORS đã được cấu hình chưa?<br>
+                        3. Kiểm tra console (F12) để xem lỗi chi tiết`);
+                    resetUploadButton();
+                });
+
+                // Timeout handler
+                xhr.addEventListener('timeout', function() {
+                    showResult('error', 'Request timeout. File có thể quá lớn hoặc server đang xử lý chậm.');
+                    resetUploadButton();
+                });
+
+                // Set timeout (5 phút cho file lớn)
+                xhr.timeout = 300000; // 5 minutes
+
+                // Open and send
+                xhr.open('POST', `${API_BASE_URL}/reports/${examId}/upload-reports`);
+                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                xhr.send(formData);
+
+            } catch (error) {
+                console.error('Upload error:', error);
+                showResult('error', `Lỗi: ${error.message || error.toString()}`);
+                resetUploadButton();
+            }
+        });
+
+        function updateProgress(percent, text) {
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressFill').textContent = Math.round(percent) + '%';
+            document.getElementById('progressText').textContent = text;
+        }
+
+        function resetUploadButton() {
+            const uploadBtn = document.getElementById('uploadBtn');
+            uploadBtn.disabled = false;
+            document.getElementById('btnText').textContent = 'Upload File';
+            document.getElementById('progressContainer').style.display = 'none';
+        }
+
+        function handleUploadSuccess(response, examId, token) {
+            updateProgress(100, 'Upload thành công!');
+            
+            currentTaskId = response.data.task_id;
+            
+            showResult('success', `
+                <h3>✅ Upload thành công!</h3>
+                <p><strong>Task ID:</strong> ${currentTaskId}</p>
+                <p><strong>Số file:</strong> ${response.data.file_count || 'N/A'}</p>
+                <p><strong>Thông báo:</strong> ${response.message}</p>
+                <p style="margin-top: 10px;"><strong>API URL:</strong> <a href="${API_BASE_URL}/tasks/status/${currentTaskId}" target="_blank">${API_BASE_URL}/tasks/status/${currentTaskId}</a></p>
+            `);
+
+            // Auto check task status
+            setTimeout(() => {
+                checkTaskStatus(examId, token);
+                // Auto refresh every 3 seconds
+                statusCheckInterval = setInterval(() => {
+                    checkTaskStatus(examId, token);
+                }, 3000);
+            }, 1000);
+
+            resetUploadButton();
+        }
+
+        async function checkTaskStatus(examId = null, token = null) {
+            if (!currentTaskId) {
+                showResult('error', 'Chưa có task ID để kiểm tra');
+                return;
+            }
+
+            if (!token) {
+                token = document.getElementById('token').value;
+            }
+
+            if (!token) {
+                showResult('error', 'Vui lòng nhập token để kiểm tra trạng thái');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/tasks/status/${currentTaskId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                displayTaskStatus(data);
+
+                // Stop auto-refresh if task is completed or failed
+                if (data.task_status === 'COMPLETED' || data.task_status === 'FAILED') {
+                    if (statusCheckInterval) {
+                        clearInterval(statusCheckInterval);
+                        statusCheckInterval = null;
+                    }
+                }
+
+            } catch (error) {
+                console.error('Error checking task status:', error);
+                let errorMsg = error.message || error.toString();
+                if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
+                    errorMsg = 'Không thể kết nối đến server. Kiểm tra server đã chạy chưa.';
+                }
+                showResult('error', `Lỗi khi kiểm tra trạng thái: ${errorMsg}`);
+            }
+        }
+
+        function displayTaskStatus(data) {
+            const taskStatusDiv = document.getElementById('taskStatus');
+            const statusContent = document.getElementById('statusContent');
+
+            let statusClass = 'processing';
+            if (data.task_status === 'COMPLETED') statusClass = 'success';
+            if (data.task_status === 'FAILED') statusClass = 'error';
+
+            let html = `
+                <div class="status-item">
+                    <span class="status-label">Trạng thái:</span>
+                    <span class="status-value ${statusClass}">${data.task_status}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Tiến độ:</span>
+                    <span class="status-value">${data.progress.toFixed(2)}%</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Tổng số file:</span>
+                    <span class="status-value">${data.pdf_total}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Đã xử lý:</span>
+                    <span class="status-value success">${data.pdf_done}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Thất bại:</span>
+                    <span class="status-value error">${data.pdf_failed}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Đang chờ:</span>
+                    <span class="status-value">${data.pdf_pending}</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Số cặp đạo văn:</span>
+                    <span class="status-value">${data.plagiarism_count || 0}</span>
+                </div>
+            `;
+
+            if (data.started_at) {
+                html += `
+                    <div class="status-item">
+                        <span class="status-label">Bắt đầu:</span>
+                        <span class="status-value">${new Date(data.started_at).toLocaleString('vi-VN')}</span>
+                    </div>
+                `;
+            }
+
+            if (data.completed_at) {
+                html += `
+                    <div class="status-item">
+                        <span class="status-label">Hoàn thành:</span>
+                        <span class="status-value">${new Date(data.completed_at).toLocaleString('vi-VN')}</span>
+                    </div>
+                `;
+            }
+
+            if (data.error) {
+                html += `
+                    <div class="status-item">
+                        <span class="status-label">Lỗi:</span>
+                        <span class="status-value error">${data.error}</span>
+                    </div>
+                `;
+            }
+
+            // Files list
+            if (data.files && data.files.length > 0) {
+                html += `
+                    <div style="margin-top: 15px;">
+                        <strong>Danh sách file:</strong>
+                        <div class="files-list">
+                `;
+                data.files.forEach(file => {
+                    let fileStatusClass = 'pending';
+                    if (file.status === 'DONE') fileStatusClass = 'done';
+                    if (file.status === 'FAILED') fileStatusClass = 'failed';
+
+                    html += `
+                        <div class="file-item">
+                            <span>${file.filename}</span>
+                            <span class="file-status ${fileStatusClass}">${file.status}</span>
+                        </div>
+                    `;
+                });
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Plagiarism results
+            if (data.plagiarism_results && data.plagiarism_results.length > 0) {
+                html += `
+                    <div style="margin-top: 15px;">
+                        <strong>Kết quả kiểm tra đạo văn:</strong>
+                        <div class="files-list">
+                `;
+                data.plagiarism_results.forEach(item => {
+                    html += `
+                        <div class="file-item">
+                            <span>${item.filename_1} ↔ ${item.filename_2}</span>
+                            <span class="status-value error">${(item.similarity * 100).toFixed(1)}%</span>
+                        </div>
+                    `;
+                });
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+
+            statusContent.innerHTML = html;
+            taskStatusDiv.style.display = 'block';
+
+            // Update progress bar
+            updateProgress(data.progress, `Đang xử lý: ${data.progress.toFixed(1)}%`);
+        }
+
+        function showResult(type, message) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.innerHTML = message;
+            resultDiv.style.display = 'block';
+
+            // Scroll to result
+            resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        // Global function for button click
+        window.checkTaskStatus = function() {
+            const token = document.getElementById('token').value;
+            const examId = document.getElementById('examId').value;
+            checkTaskStatus(examId, token);
+        };
+
+        // Load saved token from localStorage
+        window.addEventListener('load', function() {
+            const savedToken = localStorage.getItem('auth_token');
+            const savedApiUrl = localStorage.getItem('api_url');
+            
+            if (savedToken) {
+                document.getElementById('token').value = savedToken;
+                console.log('✅ Token đã được load từ localStorage');
+            }
+
+            if (savedApiUrl) {
+                API_BASE_URL = savedApiUrl;
+                console.log('✅ API URL đã được cập nhật:', API_BASE_URL);
+            }
+        });
+
+        // Listen for token updates from login page
+        window.addEventListener('message', function(event) {
+            if (event.data.type === 'token') {
+                document.getElementById('token').value = event.data.token;
+                localStorage.setItem('auth_token', event.data.token);
+                console.log('✅ Token đã được cập nhật từ trang login');
+            }
+        });
+    </script>
+</body>
+</html>
+

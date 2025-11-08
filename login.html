@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Tool BE</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 400px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .result.success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+
+        .result.error {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+
+        .token-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            word-break: break-all;
+            font-size: 12px;
+            font-family: monospace;
+            border: 1px solid #dee2e6;
+        }
+
+        .copy-btn {
+            margin-top: 10px;
+            background: #28a745;
+            padding: 8px 15px;
+            font-size: 14px;
+        }
+
+        .copy-btn:hover {
+            background: #218838;
+        }
+
+        .links {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .links a {
+            color: #667eea;
+            text-decoration: none;
+            margin: 0 10px;
+            font-size: 14px;
+        }
+
+        .links a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Đăng Nhập</h1>
+        <p class="subtitle">Lấy JWT Token để sử dụng API</p>
+
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required placeholder="Nhập username" value="admin">
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required placeholder="Nhập password" value="123456">
+            </div>
+
+            <div class="form-group">
+                <label for="apiUrl">API Base URL</label>
+                <input type="text" id="apiUrl" name="apiUrl" value="http://localhost:8000/api" required>
+            </div>
+
+            <button type="submit" class="btn" id="loginBtn">
+                <span id="btnText">Đăng Nhập</span>
+            </button>
+        </form>
+
+        <div class="result" id="result"></div>
+
+        <div class="links">
+            <a href="upload_reports.html">📤 Upload Reports</a>
+            <a href="test_upload.html">🧪 Test Upload</a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const apiUrl = document.getElementById('apiUrl').value;
+
+            const btn = document.getElementById('loginBtn');
+            btn.disabled = true;
+            document.getElementById('btnText').textContent = 'Đang đăng nhập...';
+
+            try {
+                const response = await fetch(`${apiUrl}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.access_token) {
+                    // Lưu token vào localStorage
+                    localStorage.setItem('auth_token', data.access_token);
+                    localStorage.setItem('api_url', apiUrl);
+
+                    // Hiển thị token
+                    showResult('success', `
+                        <h3>✅ Đăng nhập thành công!</h3>
+                        <p><strong>Token Type:</strong> ${data.token_type}</p>
+                        <p><strong>Access Token:</strong></p>
+                        <div class="token-box" id="tokenBox">${data.access_token}</div>
+                        <button class="btn copy-btn" onclick="copyToken()">📋 Copy Token</button>
+                        <p style="margin-top: 15px; font-size: 12px; color: #666;">
+                            Token đã được lưu vào localStorage. Bạn có thể sử dụng token này trong các trang upload.
+                        </p>
+                    `);
+
+                    // Auto-fill token in upload pages
+                    if (window.opener) {
+                        window.opener.postMessage({
+                            type: 'token',
+                            token: data.access_token
+                        }, '*');
+                    }
+                } else {
+                    showResult('error', `
+                        <h3>❌ Đăng nhập thất bại</h3>
+                        <p>${data.detail || 'Vui lòng kiểm tra lại username và password'}</p>
+                    `);
+                }
+            } catch (error) {
+                showResult('error', `
+                    <h3>❌ Lỗi kết nối</h3>
+                    <p>${error.message}</p>
+                    <p style="font-size: 12px; margin-top: 10px;">
+                        Kiểm tra xem server đã chạy chưa: ${apiUrl.replace('/api', '')}
+                    </p>
+                `);
+            } finally {
+                btn.disabled = false;
+                document.getElementById('btnText').textContent = 'Đăng Nhập';
+            }
+        });
+
+        function showResult(type, message) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.innerHTML = message;
+            resultDiv.style.display = 'block';
+        }
+
+        function copyToken() {
+            const tokenBox = document.getElementById('tokenBox');
+            const token = tokenBox.textContent;
+            
+            navigator.clipboard.writeText(token).then(() => {
+                const copyBtn = event.target;
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = '✅ Đã copy!';
+                setTimeout(() => {
+                    copyBtn.textContent = originalText;
+                }, 2000);
+            }).catch(err => {
+                alert('Không thể copy token: ' + err);
+            });
+        }
+
+        // Load saved token if exists
+        window.addEventListener('load', function() {
+            const savedToken = localStorage.getItem('auth_token');
+            const savedApiUrl = localStorage.getItem('api_url');
+            
+            if (savedToken) {
+                showResult('success', `
+                    <h3>ℹ️ Token đã được lưu</h3>
+                    <p>Bạn đã có token trong localStorage. Click "Đăng Nhập" để lấy token mới.</p>
+                    <p style="font-size: 12px; margin-top: 10px;">
+                        Token: ${savedToken.substring(0, 50)}...
+                    </p>
+                `);
+            }
+
+            if (savedApiUrl) {
+                document.getElementById('apiUrl').value = savedApiUrl;
+            }
+        });
+
+        // Listen for token requests from other pages
+        window.addEventListener('message', function(event) {
+            if (event.data.type === 'getToken') {
+                const token = localStorage.getItem('auth_token');
+                if (token && event.source) {
+                    event.source.postMessage({
+                        type: 'token',
+                        token: token
+                    }, '*');
+                }
+            }
+        });
+    </script>
+</body>
+</html>
+

@@ -1,15 +1,21 @@
 import redis
-from fastapi import APIRouter, Depends
+import json
+import logging
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
+from pydantic import BaseModel, Field
 
 from app.db import get_db
 from app.api.routes.auth import require_role
 from app.core.celery_app import celery_app
+from app.schemas.report import TaskStatusResponse
+
+logger = logging.getLogger(__name__)
 
 r = redis.Redis(host="localhost", port=6379, db=1, decode_responses=True)
 
-status_router = APIRouter(prefix="/tasks")
+status_router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
 
 @status_router.get(
@@ -80,3 +86,94 @@ def get_all_active_task_statuses(
         },
         "tasks": all_tasks
     }
+
+
+@status_router.get(
+    "/status/{task_id}",
+    summary="Lấy trạng thái chi tiết của một task theo task_id",
+    response_model=TaskStatusResponse
+)
+def get_task_status(
+    task_id: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_role(["admin", "master", "viewer"]))
+):
+    """
+    Lấy trạng thái chi tiết của task xử lý PDF theo task_id.
+    Trả về thông tin tiến độ, danh sách file, và kết quả xử lý.
+    """
+    # Lấy thông tin task từ Redis
+    task_info = r.hgetall(f"task:{task_id}")
+    
+    if not task_info:
+        raise HTTPException(status_code=404, detail="Task không tồn tại")
+    
+    # Lấy danh sách file
+    files = list(r.smembers(f"task:{task_id}:files"))
+    file_results = []
+    
+    for fname in files:
+        fdata = r.hgetall(f"task:{task_id}:file:{fname}")
+        if fdata:
+            # Parse result nếu là JSON
+            result = fdata.get("result", "")
+            if result:
+                try:
+                    result = json.loads(result)
+                except:
+                    pass
+            
+            file_results.append({
+                "filename": fdata.get("filename", ""),
+                "status": fdata.get("status", "PENDING"),
+                "result": result if result else None,
+                "error": fdata.get("error") or None
+            })
+    
+    # Lấy kết quả đạo văn nếu có
+    plagiarism_data = r.get(f"task:{task_id}:plagiarism")
+    plagiarism_results = []
+    if plagiarism_data:
+        try:
+            plagiarism_list = json.loads(plagiarism_data)
+            plagiarism_results = [
+                {
+                    "report_id_1": item.get("report_id_1"),
+                    "report_id_2": item.get("report_id_2"),
+                    "filename_1": item.get("filename_1", ""),
+                    "filename_2": item.get("filename_2", ""),
+                    "similarity": float(item.get("similarity", 0))
+                }
+                for item in plagiarism_list
+            ]
+        except Exception as e:
+            logger.error(f"Lỗi parse plagiarism data: {e}")
+    
+    # Lấy thông tin từ Celery nếu có
+    celery_state = "UNKNOWN"
+    try:
+        celery_task = celery_app.AsyncResult(task_id)
+        celery_state = celery_task.state
+    except Exception as e:
+        logger.error(f"Lỗi lấy Celery state: {e}")
+    
+    return TaskStatusResponse(
+        status=True,
+        task_id=task_id,
+        exam_id=task_info.get("exam_id", ""),
+        username=task_info.get("username", ""),
+        task_status=task_info.get("status", "UNKNOWN"),
+        celery_state=celery_state,
+        progress=float(task_info.get("progress", 0)),
+        pdf_total=int(task_info.get("pdf_total", 0)),
+        pdf_done=int(task_info.get("pdf_done", 0)),
+        pdf_failed=int(task_info.get("pdf_failed", 0)),
+        pdf_pending=int(task_info.get("pdf_pending", 0)),
+        plagiarism_count=int(task_info.get("plagiarism_count", 0)),
+        started_at=task_info.get("started_at"),
+        completed_at=task_info.get("completed_at"),
+        failed_at=task_info.get("failed_at"),
+        error=task_info.get("error"),
+        files=file_results,
+        plagiarism_results=plagiarism_results,
+    )

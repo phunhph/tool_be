@@ -97,6 +97,9 @@ alembic upgrade head ||  python -m alembic upgrade head
 ```bash
 uvicorn app.main:app --reload ||  python -m uvicorn app.main:app  --reload 
 ```
+celery -A app.core.celery_app worker -l info -Q report -E
+
+
 # 🚨 DÙNG EVENTLET (hoặc gevent)
 celery -A app.core.celery_app worker -P eventlet --loglevel=info -c 5 || python -m celery -A app.core.celery_app worker -P eventlet --loglevel=info -c 5
 python -m celery -A app.core.celery_app worker -P solo --loglevel=info
