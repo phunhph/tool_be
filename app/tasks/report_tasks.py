@@ -81,10 +81,12 @@ def process_uploaded_archive(self, exam_id: str, folder_path: str, file_metadata
                 mssv = extracted_data.get("MSSV", "").strip()
                 if not mssv:
                     raise ValueError("Không tìm thấy MSSV trong file PDF")
-
-                # Chuẩn hóa dữ liệu
+                
+                # ------------------- Chuẩn hóa dữ liệu từ Gemini -------------------
                 name = extracted_data.get("Họ và tên", filename).strip()
+                mssv = extracted_data.get("MSSV", "").strip()
                 major = extracted_data.get("Ngành", "").strip()
+                company = extracted_data.get("Thực tập tại công ty(doanh nghiệp)", "").strip()
                 position = extracted_data.get("Vị trí thực tập", "").strip()
                 strengths = extracted_data.get("Ưu điểm", "").strip()
                 weaknesses = extracted_data.get("Nhược điểm", "").strip()
@@ -92,25 +94,22 @@ def process_uploaded_archive(self, exam_id: str, folder_path: str, file_metadata
                 raw_content = extracted_data.get("Nội dung báo cáo thô", "").strip()
                 note = extracted_data.get("Đánh giá cuối cùng", "").strip()
 
-                # Xử lý điểm số
-                attitude_score_str = str(extracted_data.get("Điểm thái độ", "")).strip()
-                work_score_str = str(extracted_data.get("Điểm công việc", "")).strip()
-                
-                try:
-                    attitude_score = int(float(attitude_score_str)) if attitude_score_str else None
-                except (ValueError, TypeError):
-                    attitude_score = None
-                
-                try:
-                    work_score = int(float(work_score_str)) if work_score_str else None
-                except (ValueError, TypeError):
-                    work_score = None
+                # ------------------- Xử lý điểm số -------------------
+                def parse_score(score_str: str) -> int | None:
+                    try:
+                        return int(float(score_str.strip())) if score_str else None
+                    except (ValueError, TypeError):
+                        return None
 
-                # Tạo Report trong database
+                attitude_score = parse_score(extracted_data.get("Điểm thái độ", ""))
+                work_score = parse_score(extracted_data.get("Điểm công việc", ""))
+
+                # ------------------- Tạo Report trong database -------------------
                 new_report = Report(
                     name=name,
                     student_code=mssv,
                     major=major if major else None,
+                    company=company if company else None,       # thêm công ty nếu có trường trong DB
                     position=position if position else None,
                     strengths=strengths if strengths else None,
                     weaknesses=weaknesses if weaknesses else None,
@@ -124,6 +123,7 @@ def process_uploaded_archive(self, exam_id: str, folder_path: str, file_metadata
                     created_at=datetime.utcnow(),
                     created_by=username,
                 )
+
                 db.add(new_report)
                 db.flush()  # Lấy ID của report
 

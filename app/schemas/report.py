@@ -14,7 +14,7 @@ class ReportFileResponse(BaseModel):
     id: int
     name_file: str
     path_storage: str
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -42,7 +42,7 @@ class ReportUpdate(ReportBase):
 
 class ReportResponse(ReportBase):
     id: int
-    created_at: datetime
+    created_at: Optional[datetime] = None
     files: List[ReportFileResponse] = []
 
     class Config:
@@ -52,7 +52,7 @@ class ReportFileSchema(BaseModel):
     id: int
     name_file: str
     path_storage: str
-    created_at: Optional[datetime]
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

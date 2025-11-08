@@ -29,7 +29,10 @@ def get_all_active_task_statuses(
 ):
     """Lấy danh sách và thống kê tiến độ của các task hiện có trong Redis."""
 
-    task_keys = [key for key in r.scan_iter(match="task:*") if not any(s in key for s in [":file:", ":files"])]
+    task_keys = [
+        key for key in r.scan_iter(match="task:*")
+        if not any(s in key for s in [":file:", ":files"])
+    ]
 
     all_tasks = []
     total_pdf = 0
@@ -38,6 +41,11 @@ def get_all_active_task_statuses(
     total_pending = 0
 
     for key in task_keys:
+        key_type = r.type(key)
+        if key_type != 'hash':
+            logger.warning(f"Key {key} không phải hash, bỏ qua type={key_type}")
+            continue
+
         task_info = r.hgetall(key)
         if not task_info:
             continue
@@ -47,9 +55,28 @@ def get_all_active_task_statuses(
         file_results = []
 
         for fname in files:
-            fdata = r.hgetall(f"task:{task_id}:file:{fname}")
+            file_key = f"task:{task_id}:file:{fname}"
+            file_type = r.type(file_key)
+            if file_type != 'hash':
+                logger.warning(f"File key {file_key} không phải hash, bỏ qua type={file_type}")
+                continue
+
+            fdata = r.hgetall(file_key)
             if fdata:
-                file_results.append(fdata)
+                # Parse result nếu là JSON
+                result = fdata.get("result", "")
+                if result:
+                    try:
+                        result = json.loads(result)
+                    except:
+                        pass
+
+                file_results.append({
+                    "filename": fdata.get("filename", ""),
+                    "status": fdata.get("status", "PENDING"),
+                    "result": result if result else None,
+                    "error": fdata.get("error") or None
+                })
 
         # Cộng dồn thống kê tổng
         pdf_total = int(task_info.get("pdf_total", 0))
@@ -86,6 +113,7 @@ def get_all_active_task_statuses(
         },
         "tasks": all_tasks
     }
+
 
 
 @status_router.get(
