@@ -7,12 +7,14 @@ from app.schemas.report import ReportCreate, ReportUpdate, ReportResponse, Uploa
 from app.services.report_service import ReportService
 from app.schemas.base_schemas import ListResponse, DetailResponse, CreateResponse, UpdateResponse, DeleteResponse
 from app.api.routes.auth import require_role
+from fastapi import Depends, Query
+from typing import Optional
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
-@router.get("/", response_model=ListResponse[ReportResponse], summary="Danh sách tất cả báo cáo")
-def get_reports(db: Session = Depends(get_db), _: User = Depends(require_role(["admin", "viewer"])), page: int = 1, page_size: int = 20):
-    return ReportService.get_list(db, page, page_size)
+@router.get("", response_model=ListResponse[ReportResponse], summary="Danh sách tất cả báo cáo")
+def get_reports(db: Session = Depends(get_db), _: User = Depends(require_role(["admin", "viewer"])), page: int = 1, page_size: int = 20, exam_id: Optional[int] = Query(None, description="Lọc theo ID kỳ thi"),):
+    return ReportService.get_list(db, page, page_size, exam_id)
 
 @router.get("/{report_id}", response_model=DetailResponse[ReportResponse], summary="Chi tiết báo cáo theo ID")
 def get_report_detail(report_id: int, db: Session = Depends(get_db), _: User = Depends(require_role(["admin", "viewer"]))):

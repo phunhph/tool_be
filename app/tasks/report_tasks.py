@@ -109,7 +109,7 @@ def process_uploaded_archive(self, exam_id: str, folder_path: str, file_metadata
                     name=name,
                     student_code=mssv,
                     major=major if major else None,
-                    company=company if company else None,       # thêm công ty nếu có trường trong DB
+                    company= "",       # thêm công ty nếu có trường trong DB
                     position=position if position else None,
                     strengths=strengths if strengths else None,
                     weaknesses=weaknesses if weaknesses else None,

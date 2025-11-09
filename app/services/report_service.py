@@ -22,6 +22,8 @@ from app.services.gemini_service import GeminiService, PLAGIARISM_THRESHOLD
 from app.tasks.report_tasks import process_uploaded_archive
 import tempfile
 import json
+from typing import Optional
+
 # Logging setup
 logger = logging.getLogger(__name__)
 
@@ -69,8 +71,12 @@ class ReportService:
 
     # ------------------- CRUD -------------------
     @staticmethod
-    def get_list(db: Session, page: int = 1, page_size: int = 20):
+    def get_list(db: Session, page: int, page_size: int, exam_id: Optional[int] = None):
         query = db.query(Report).order_by(Report.created_at.desc())
+
+        if exam_id is not None:
+            query = query.filter(Report.exam_id == exam_id)
+
         total = query.count()
         reports = query.offset((page - 1) * page_size).limit(page_size).all()
 

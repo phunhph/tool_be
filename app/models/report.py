@@ -16,6 +16,7 @@ class Report(Base):
     student_code = Column(String(50), nullable=False)
     major = Column(String(255))
     position = Column(String(255))
+    company = Column(String(255))  
     strengths = Column(Text)
     weaknesses = Column(Text)
     proposal = Column(Text)
@@ -35,3 +36,4 @@ class Report(Base):
 
     exam = relationship("Exam", back_populates="reports")
     files = relationship("ReportFile", back_populates="report", cascade="all, delete")
+

@@ -49,3 +49,4 @@ celery
 redis
 eventlet
 google.generativeai
+flask-cors

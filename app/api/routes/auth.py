@@ -8,6 +8,7 @@ from app.db import get_db
 from app.models.user import User
 from app.schemas.auth import Token, UserResponse
 import os
+from fastapi import Header
 
 router = APIRouter(
     prefix="/auth",
@@ -60,7 +61,6 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     refresh_token = create_refresh_token(user.id)
 
     REFRESH_TOKENS[user.id] = refresh_token
-
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -98,22 +98,23 @@ def require_role(required_roles: list[str]):
     return role_checker
 
 
-# -------- ME ----------
-@router.get("/me", response_model=UserResponse, summary="Lấy thông tin người dùng hiện tại")
-def read_users_me(current_user: User = Depends(get_current_user)):
-    return current_user
-
 
 # -------- REFRESH TOKEN ----------
 @router.post("/refresh", summary="Làm mới access token")
-def refresh_token(refresh_token: str, db: Session = Depends(get_db)):
+def refresh_token(
+    x_refresh_token: str = Header(..., description="Refresh token từ header"),
+    db: Session = Depends(get_db)
+):
+    """
+    Xác thực refresh token từ header `X-Refresh-Token` và trả về access token mới.
+    """
     try:
-        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(x_refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("type") != "refresh":
             raise HTTPException(status_code=401, detail="Không phải refresh token")
 
         user_id = int(payload.get("sub"))
-        if REFRESH_TOKENS.get(user_id) != refresh_token:
+        if REFRESH_TOKENS.get(user_id) != x_refresh_token:
             raise HTTPException(status_code=401, detail="Refresh token không hợp lệ")
 
         user = db.query(User).filter(User.id == user_id).first()
@@ -122,7 +123,13 @@ def refresh_token(refresh_token: str, db: Session = Depends(get_db)):
 
         role_name = user.role.name if user.role else None
         new_access_token = create_access_token(user.id, role_name)
-        return {"access_token": new_access_token, "token_type": "bearer"}
+
+        # Trả cả access_token và refresh_token cũ
+        return {
+            "access_token": new_access_token,
+            "refresh_token": x_refresh_token,
+            "token_type": "bearer"
+        }
 
     except JWTError:
         raise HTTPException(status_code=401, detail="Token không hợp lệ hoặc đã hết hạn")
@@ -130,7 +137,14 @@ def refresh_token(refresh_token: str, db: Session = Depends(get_db)):
 
 # -------- LOGOUT ----------
 @router.post("/logout", summary="Đăng xuất (xóa refresh token)")
-def logout(current_user: User = Depends(get_current_user)):
-    if current_user.id in REFRESH_TOKENS:
-        REFRESH_TOKENS.pop(current_user.id)
-    return {"message": "Đăng xuất thành công"}
+def logout(x_refresh_token: str = Header(..., description="Refresh token từ header")):
+    """
+    Xóa refresh token khỏi bộ nhớ REFRESH_TOKENS.
+    """
+    # Kiểm tra token trong REFRESH_TOKENS
+    for user_id, token in list(REFRESH_TOKENS.items()):
+        if token == x_refresh_token:
+            REFRESH_TOKENS.pop(user_id)
+            return {"message": "Đăng xuất thành công"}
+    
+    raise HTTPException(status_code=401, detail="Token không hợp lệ")
