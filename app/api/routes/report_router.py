@@ -43,7 +43,7 @@ def upload_report_files(
     result = ReportService.upload_files(db, exam_id, files, username)
     return result
 
-@router.get("/export/{exam_id}", summary="Export báo cáo theo kỳ thi ra file Excel")
+@router.get("/export/{exam_id}", summary="Xuất danh sách báo cáo ra file Excel")
 def export_reports(exam_id: int, db: Session = Depends(get_db)):
     return ReportService.export_by_exam(db, exam_id)
 

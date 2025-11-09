@@ -7,7 +7,9 @@ from datetime import datetime
 from io import BytesIO
 from typing import List, Dict, Any, Callable, Awaitable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+from fastapi.responses import StreamingResponse
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl import Workbook
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, HTTPException
 
@@ -412,3 +414,87 @@ class ReportService:
             logger.error(f"Lỗi không mong đợi trong process_zip_upload: {e}", exc_info=True)
             raise_error(500, f"Lỗi xử lý upload: {e}")
     
+    @staticmethod
+    def export_by_exam(db, exam_id: int):
+        # Lấy dữ liệu báo cáo theo kỳ thi
+        reports = db.query(Report).filter(Report.exam_id == exam_id).all()
+
+        if not reports:
+            return {"status": False, "message": "Không có dữ liệu để xuất Excel."}
+
+        # === TẠO FILE EXCEL ===
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"Exam_{exam_id}"
+
+        # Header
+        headers = [
+            "STT", "Họ và tên", "MSSV", "Ngành", "Công ty thực tập", "Vị trí thực tập",
+            "Ưu điểm", "Nhược điểm", "Đề xuất", "Điểm thái độ", "Điểm công việc",
+            "Ghi chú", "Ngày tạo", "Người tạo"
+        ]
+        ws.append(headers)
+
+        # Style cho header
+        header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True)
+        header_align = Alignment(horizontal="center", vertical="center")
+        thin_border = Border(
+            left=Side(style="thin"), right=Side(style="thin"),
+            top=Side(style="thin"), bottom=Side(style="thin")
+        )
+
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_align
+            cell.border = thin_border
+
+        # Ghi dữ liệu
+        for i, r in enumerate(reports, start=1):
+            row = [
+                i,
+                r.name or "",
+                r.student_code or "",
+                r.major or "",
+                 "",
+                r.position or "",
+                r.strengths or "",
+                r.weaknesses or "",
+                r.proposal or "",
+                r.attitude_score or "",
+                r.work_score or "",
+                r.note or "",
+                r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else "",
+                r.created_by or "",
+            ]
+            ws.append(row)
+
+        # Căn giữa và thêm viền
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, max_col=len(headers)):
+            for cell in row:
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
+                cell.border = thin_border
+
+        # Auto width
+        for column_cells in ws.columns:
+            length = max(len(str(cell.value)) if cell.value else 0 for cell in column_cells)
+            ws.column_dimensions[column_cells[0].column_letter].width = min(length + 2, 50)
+
+        # Ghi ra buffer
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        # Tên file
+        filename = f"Bao_cao_thuc_tap_{exam_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+        # Trả file về client
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
