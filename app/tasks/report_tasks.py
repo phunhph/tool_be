@@ -83,16 +83,19 @@ def process_uploaded_archive(self, exam_id: str, folder_path: str, file_metadata
                     raise ValueError("Không tìm thấy MSSV trong file PDF")
                 
                 # ------------------- Chuẩn hóa dữ liệu từ Gemini -------------------
-                name = extracted_data.get("Họ và tên", filename).strip()
-                mssv = extracted_data.get("MSSV", "").strip()
-                major = extracted_data.get("Ngành", "").strip()
-                company = extracted_data.get("Thực tập tại công ty(doanh nghiệp)", "").strip()
-                position = extracted_data.get("Vị trí thực tập", "").strip()
-                strengths = extracted_data.get("Ưu điểm", "").strip()
-                weaknesses = extracted_data.get("Nhược điểm", "").strip()
-                proposal = extracted_data.get("Đề xuất", "").strip()
-                raw_content = extracted_data.get("Nội dung báo cáo thô", "").strip()
-                note = extracted_data.get("Đánh giá cuối cùng", "").strip()
+                data = extracted_data or {} 
+                print (data)
+                name = (data.get("Họ và tên") or filename or "").strip()
+                mssv = (data.get("MSSV") or "").strip()
+                major = (data.get("Ngành") or "").strip()
+                company = (data.get("Thực tập tại công ty(doanh nghiệp)") or "").strip()
+                position = (data.get("Vị trí thực tập") or "").strip()
+                strengths = (data.get("Ưu điểm") or "").strip()
+                weaknesses = (data.get("Hạn chế") or "").strip()
+                proposal = (data.get("Đề xuất góp ý") or "").strip()
+                raw_content = (data.get("Nội dung báo cáo thô") or "").strip()
+                note = (data.get("Đánh giá cuối cùng") or "").strip()
+
 
                 # ------------------- Xử lý điểm số -------------------
                 def parse_score(score_str: str) -> int | None:
@@ -109,7 +112,7 @@ def process_uploaded_archive(self, exam_id: str, folder_path: str, file_metadata
                     name=name,
                     student_code=mssv,
                     major=major if major else None,
-                    company= "",       # thêm công ty nếu có trường trong DB
+                    company=company if company else None,       # thêm công ty nếu có trường trong DB
                     position=position if position else None,
                     strengths=strengths if strengths else None,
                     weaknesses=weaknesses if weaknesses else None,

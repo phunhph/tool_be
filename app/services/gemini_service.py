@@ -18,7 +18,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 from fastapi import HTTPException
 import fitz  # PyMuPDF
+import pytesseract
 
+# Thêm vào đầu module của bạn (sau import pytesseract)
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 load_dotenv()
 
 def raise_error(status: int, message: str):
@@ -82,22 +85,45 @@ class GeminiService:
         # --- Chuẩn bị prompt ---
         prompt = """
 Bạn là công cụ trích xuất dữ liệu chuyên biệt từ các phiếu "Báo cáo thực tập".
-Nhiệm vụ: Trích xuất các thông tin sau vào CẤU TRÚC JSON.
-Hãy trả về DUY NHẤT một đối tượng JSON với các key sau:
+Nhiệm vụ: Trích xuất các thông tin sau và trả về DUY NHẤT một đối tượng JSON có cấu trúc cố định dưới đây.
+
+CẤU TRÚC JSON:
 
 {
-  "Họ và tên": "",
-  "MSSV": "",
-  "Ngành": "",
-  "Thực tập tại công ty(doanh nghiệp)": "",
-  "Vị trí thực tập": "",
-  "Ưu điểm": "",
-  "Nhược điểm": "",
-  "Đề xuất": "",
-  "Điểm thái độ": "",
-  "Điểm công việc": "",
-  "Đánh giá cuối cùng": "",
+  "Họ và tên": ["Họ và Tên"],
+  "MSSV": ["MSSV"],
+  "Ngành": ["Ngành"],
+  "Email": ["Email"],
+  "Thực tập tại công ty(doanh nghiệp)": ["Thực tập tại công ty", "doanh nghiệp"],
+  "Địa chỉ": ["Địa chỉ"],
+  "Vị trí thực tập": ["Vị trí thực tập"],
+  "Ưu điểm": ["1 Ưu điểm"],
+  "Hạn chế": ["2 Hạn chế"],
+  "Đề xuất góp ý": ["Đề xuất góp ý"],
+  "Điểm thái độ": ["- thái độ"],
+  "Điểm ý thức": ["- ý thức"],
+  "Đánh giá cuối cùng": ["Đánh giá cuối cùng"]
 }
+
+---
+
+**Hướng dẫn đặc biệt cho trường "Đánh giá cuối cùng":**
+Phần này gồm hai lựa chọn:
+- [ ] Đạt
+- [ ] Không đạt
+
+Hãy xác định ô nào được đánh dấu (tích ✓, dấu X, chấm tròn ●, tô đen, hoặc có ký hiệu tương tự).
+Nếu ô “Đạt” được đánh dấu → ghi giá trị là `"Đạt"`.
+Nếu ô “Không đạt” được đánh dấu → ghi giá trị là `"Không đạt"`.
+Nếu không xác định được → ghi `"Không rõ"`.
+
+---
+
+**Yêu cầu chung:**
+- Luôn trả về JSON hợp lệ (không thêm chữ giải thích hoặc mô tả).
+- Nếu thông tin không có trong PDF, đặt giá trị là `null`.
+- Tất cả giá trị phải ở dạng chuỗi (string).
+- Không thêm hoặc bỏ bất kỳ key nào.
 """
 
         # --- Gửi lên Gemini nếu có API_KEY ---
@@ -165,8 +191,7 @@ Hãy trả về DUY NHẤT một đối tượng JSON với các key sau:
         # --- Đảm bảo đủ keys ---
         keys = ["Họ và tên","MSSV","Ngành","Vị trí thực tập",
                 "Ưu điểm","Nhược điểm","Đề xuất",
-                "Điểm thái độ","Điểm công việc","Đánh giá cuối cùng",
-                "Nội dung báo cáo thô"]
+                "Điểm thái độ","Điểm công việc","Đánh giá cuối cùng"]
         for k in keys:
             if k not in data:
                 data[k] = ""

@@ -423,7 +423,7 @@ class ReportService:
     @staticmethod
     def export_by_exam(db, exam_id: int):
         # Lấy dữ liệu báo cáo theo kỳ thi
-        reports = db.query(Report).filter(Report.exam_id == exam_id).all()
+        reports = db.query(Report).all()
 
         if not reports:
             return {"status": False, "message": "Không có dữ liệu để xuất Excel."}
@@ -464,7 +464,7 @@ class ReportService:
                 r.name or "",
                 r.student_code or "",
                 r.major or "",
-                 "",
+                r.company or "",
                 r.position or "",
                 r.strengths or "",
                 r.weaknesses or "",
