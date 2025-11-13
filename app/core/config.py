@@ -17,9 +17,9 @@ class Settings:
     CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
     REPORT_STORAGE_ROOT = os.getenv(
         "REPORT_STORAGE_ROOT",
-        str((Path.home() / "be_tool_reports").resolve())
+        str((Path(__file__).parent / "uploads" / "be_tool_reports").resolve())
     )
-    
+        
     # Google Drive Configuration
     GOOGLE_DRIVE_ENABLED = os.getenv("GOOGLE_DRIVE_ENABLED", "false").lower() == "true"
     GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")

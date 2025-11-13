@@ -101,7 +101,8 @@ CẤU TRÚC JSON:
   "Hạn chế": ["2 Hạn chế"],
   "Đề xuất góp ý": ["Đề xuất góp ý"],
   "Điểm thái độ": ["- thái độ"],
-  "Điểm ý thức": ["- ý thức"],
+  "Điểm ý thức": ["- Kết quả công việc"],
+  "Điểm công việc": ["- Kết quả công việc"],
   "Đánh giá cuối cùng": ["Đánh giá cuối cùng"]
 }
 
