@@ -493,9 +493,12 @@ class ReportService:
     @staticmethod
     def export_by_exam(db, exam_id: int):
         # Lấy dữ liệu báo cáo theo kỳ thi
-        reports = db.query(Report).filter(
-            Report.exam_id == exam_id
-        ).order_by(Report.created_at.desc()).all()
+        query = db.query(Report).order_by(Report.created_at.desc())
+
+        if exam_id is not None:
+            query = query.filter(Report.exam_id == exam_id)
+
+        reports = query.all()
 
         if not reports:
             return {"status": False, "message": "Không có dữ liệu để xuất Excel."}

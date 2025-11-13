@@ -17,6 +17,10 @@ router = APIRouter(prefix="/reports", tags=["Reports"])
 def get_reports(db: Session = Depends(get_db), _: User = Depends(require_role(["admin", "viewer"])), page: int = 1, page_size: int = 20, exam_id: Optional[int] = Query(None, description="Lọc theo ID kỳ thi"),):
     return ReportService.get_list(db, page, page_size, exam_id)
 
+@router.get("/export", summary="Xuất danh sách báo cáo ra file Excel")
+def export_reports(db: Session = Depends(get_db), exam_id: Optional[int] = Query(None, description="Lọc theo ID kỳ thi"),):
+    return ReportService.export_by_exam(db, exam_id)
+
 @router.get("/{report_id}", response_model=DetailResponse[ReportResponse], summary="Chi tiết báo cáo theo ID")
 def get_report_detail(report_id: int, db: Session = Depends(get_db), _: User = Depends(require_role(["admin", "viewer"]))):
     return ReportService.get_detail(db, report_id)
@@ -49,10 +53,6 @@ def upload_report_files(
     username = current_user.login_id if hasattr(current_user, 'login_id') else str(current_user.id)
     result = ReportService.upload_files(db, exam_id, files, username)
     return result
-
-@router.get("/export/{exam_id}", summary="Xuất danh sách báo cáo ra file Excel")
-def export_reports(exam_id: int, db: Session = Depends(get_db)):
-    return ReportService.export_by_exam(db, exam_id)
 
 @router.post("/{exam_id}/upload-reports", response_model=UploadZipReportResponse, summary="Upload file ZIP chứa báo cáo cho kỳ thi")
 async def upload_reports_endpoint(
