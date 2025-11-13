@@ -4,19 +4,13 @@ from collections import defaultdict
 from app.api.routes.api import router as api_router
 from app.api.routes.ws_router import ws_router
 from fastapi.middleware.cors import CORSMiddleware
-
+from app.core.config import Settings
 
 app = FastAPI(title="BE Tool API", description="Backend Tool API for internal management")
 app.include_router(ws_router) 
 app.include_router(api_router, prefix="/api")
 
-origins = [
-    "http://localhost:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:5500",
-    "http://localhost:5173"
-]
-
+origins = Settings.CORS_ORIGINS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,             

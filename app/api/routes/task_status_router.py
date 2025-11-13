@@ -10,10 +10,12 @@ from app.db import get_db
 from app.api.routes.auth import require_role
 from app.core.celery_app import celery_app
 from app.schemas.report import TaskStatusResponse
+from app.core.redis_client import redis_client
 
 logger = logging.getLogger(__name__)
 
-r = redis.Redis(host="localhost", port=6379, db=1, decode_responses=True)
+# Redis connection
+r = redis_client
 
 status_router = APIRouter(prefix="/tasks", tags=["Tasks"])
 

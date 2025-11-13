@@ -38,9 +38,9 @@ else:
 
 try:
     EMBEDDING_MODEL = SentenceTransformer('paraphrase-multilingual-mpnet-base-v2') 
-    print("✅ Embedding Model loaded.")
+    print("[OK] Embedding Model loaded.")
 except Exception as e:
-    print(f"❌ LỖI: Cannot load Embedding Model: {e}")
+    print(f"[ERROR] Cannot load Embedding Model: {e}")
     EMBEDDING_MODEL = None
 
 RE_MSSV_STRICT = re.compile(r"\bPH\d{5}\b", re.IGNORECASE)

@@ -6,7 +6,7 @@ from app.schemas.base_schemas import DetailResponse, ListResponse
 from app.schemas.user import UserCreate
 from fastapi import HTTPException
 from passlib.context import CryptContext
-
+from sqlalchemy.orm import joinedload
 # Helper cho lỗi
 def raise_error(status: int, message: str):
     raise HTTPException(status_code=status, detail={"status": status, "message": message})
@@ -14,7 +14,10 @@ def raise_error(status: int, message: str):
 class UserService:
     @staticmethod
     def get_users(db: Session, page: int = 1, page_size: int = 20):
-        users = db.query(User).filter(User.is_delete==False)
+        users = db.query(User).options(
+            joinedload(User.role) 
+        ).filter(User.is_delete==False)
+        
         total = users.count()
         users = users.offset((page - 1) * page_size).limit(page_size).all()
         return ListResponse(

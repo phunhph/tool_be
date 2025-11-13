@@ -7,6 +7,7 @@ class ReportStatus(str, enum.Enum):
     pending = "pending"
     completed = "completed"
     plagiarized = "plagiarized"
+    failed = "failed"
 
 class Report(Base):
     __tablename__ = "reports"
@@ -29,6 +30,7 @@ class Report(Base):
         default=ReportStatus.pending,
         nullable=False
     )
+    processing_error = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     created_by = Column(String(100))

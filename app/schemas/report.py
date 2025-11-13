@@ -9,6 +9,7 @@ class ReportStatus(str, Enum):
     checked = "checked"
     plagiarized = "plagiarized"
     approved = "approved"
+    failed = "failed"
 
 class ReportFileResponse(BaseModel):
     id: int
@@ -32,6 +33,7 @@ class ReportBase(BaseModel):
     work_point: Optional[int]
     status: Optional[ReportStatus]
     exam_id: Optional[int]
+    error: Optional[str] = None
 
 class ReportCreate(ReportBase):
     status: ReportStatus = ReportStatus.pending

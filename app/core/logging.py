@@ -1,9 +1,16 @@
-import logging
-
+# app/core/logging.py
 from loguru import logger
+import sys
 
-
-class InterceptHandler(logging.Handler):
-    def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover
-        logger_opt = logger.opt(depth=7, exception=record.exc_info)
-        logger_opt.log(record.levelname, record.getMessage())
+logger.remove()
+logger.add(
+    sys.stdout,
+    format="{time} | {level} | {name}:{function}:{line} | {message}",
+    level="INFO"
+)
+logger.add(
+    "logs/app_{time:YYYY-MM-DD}.log",
+    rotation="00:00",
+    retention="30 days",
+    level="DEBUG"
+)

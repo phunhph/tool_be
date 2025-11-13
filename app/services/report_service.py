@@ -3,15 +3,20 @@ import shutil
 import zipfile
 import asyncio
 import logging
+import tempfile
+import json
+import uuid
 from datetime import datetime
 from io import BytesIO
-from typing import List, Dict, Any, Callable, Awaitable
+from pathlib import Path
+from typing import List, Dict, Any, Callable, Awaitable, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from fastapi.responses import StreamingResponse
+
+from fastapi import UploadFile, HTTPException
+from fastapi.responses import StreamingResponse, FileResponse
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl import Workbook
-from sqlalchemy.orm import Session
-from fastapi import UploadFile, HTTPException
+from sqlalchemy.orm import Session, joinedload
 
 from app.models import Report, Exam
 from app.schemas.report import ReportStatus, ReportCreate, ReportUpdate
@@ -20,14 +25,13 @@ from app.schemas.base_schemas import (
 )
 from app.services.gemini_service import GeminiService, PLAGIARISM_THRESHOLD
 from app.tasks.report_tasks import process_uploaded_archive
-import tempfile
-import json
-from typing import Optional
-
+from app.core.config import settings
+from app.core.google_drive import get_google_drive_manager
 # Logging setup
 logger = logging.getLogger(__name__)
 
-UPLOAD_ROOT = "uploads/reports"
+STORAGE_ROOT = Path(settings.REPORT_STORAGE_ROOT)
+STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
 MAX_WORKERS = 5  # số luồng xử lý song song
 
 
@@ -58,6 +62,7 @@ class ReportService:
             "status": report.status,
             "exam_id": report.exam_id,
             "created_at": report.created_at,
+            "error": report.processing_error,
             "files": [
                 {
                     "id": f.id,
@@ -72,7 +77,10 @@ class ReportService:
     # ------------------- CRUD -------------------
     @staticmethod
     def get_list(db: Session, page: int, page_size: int, exam_id: Optional[int] = None):
-        query = db.query(Report).order_by(Report.created_at.desc())
+        query = db.query(Report).options(
+            joinedload(Report.files),  # Eager load files
+            joinedload(Report.exam)    # Eager load exam nếu cần
+        ).order_by(Report.created_at.desc())
 
         if exam_id is not None:
             query = query.filter(Report.exam_id == exam_id)
@@ -89,7 +97,7 @@ class ReportService:
 
     @staticmethod
     def get_detail(db: Session, report_id: int):
-        report = db.query(Report).filter(Report.id == report_id).first()
+        report = db.query(Report).options(joinedload(Report.files)).filter(Report.id == report_id).first()
         if not report:
             raise_error(404, "Report không tồn tại")
         return DetailResponse(status=True, data=ReportService.map_to_schema(report))
@@ -112,6 +120,7 @@ class ReportService:
             exam_id=data.get("exam_id"),
             created_at=datetime.utcnow(),
             created_by=username,
+            processing_error=data.get("error"),
         )
         db.add(new_report)
         db.commit()
@@ -126,7 +135,10 @@ class ReportService:
             raise_error(404, "Report không tồn tại")
 
         for key, value in payload.dict(exclude_unset=True).items():
-            setattr(report, key, value)
+            if key == "error":
+                report.processing_error = value
+            else:
+                setattr(report, key, value)
 
         db.commit()
         db.refresh(report)
@@ -259,8 +271,8 @@ class ReportService:
     def process_zip_upload(db: Session, exam_id: int, zip_bytes: bytes, zip_filename: str, username: str):
         """
         Xử lý upload file ZIP chứa các file PDF báo cáo.
-        - Kiểm tra exam tồn tại
-        - Giải nén ZIP và lưu file PDF
+        - Upload trực tiếp lên Google Drive (nếu enabled)
+        - Fallback: lưu local nếu Google Drive không cấu hình
         - Khởi tạo Celery task để xử lý bất đồng bộ
         """
         try:
@@ -269,16 +281,35 @@ class ReportService:
             if not exam:
                 raise_error(404, "Kỳ thi không tồn tại")
 
-            # Tạo folder để lưu file
+            # Tạo timestamp và folder name
             timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
             folder_name = f"report_{exam.code}_{timestamp}"
-            folder_path = os.path.join(UPLOAD_ROOT, folder_name)
             
+            # Kiểm tra có nên dùng Google Drive không
+            use_gdrive = settings.GOOGLE_DRIVE_ENABLED and settings.GOOGLE_DRIVE_ROOT_FOLDER_ID
+            gd_manager = get_google_drive_manager() if use_gdrive else None
+            gdrive_folder_id = None
+            folder_path = None
+            gdrive_upload_failed = False  # Flag: nếu upload Google Drive fail, không thử lại
+            
+            # Tạo folder local ngay (không chờ test Google Drive)
+            folder_path = STORAGE_ROOT / folder_name
             try:
-                os.makedirs(folder_path, exist_ok=True)
+                folder_path.mkdir(parents=True, exist_ok=True)
             except Exception as e:
-                logger.error(f"Lỗi tạo folder: {e}")
+                logger.error(f"Lỗi tạo folder local: {e}")
                 raise_error(500, f"Không thể tạo folder lưu file: {e}")
+            
+            # Nếu Google Drive enabled và configured, thử tạo folder trên GDrive
+            if use_gdrive and gd_manager and gd_manager.is_configured:
+                gdrive_folder_id = gd_manager.create_folder(
+                    folder_name,
+                    parent_id=settings.GOOGLE_DRIVE_ROOT_FOLDER_ID
+                )
+                if not gdrive_folder_id:
+                    logger.warning("Không thể tạo folder trên Google Drive, sẽ dùng local storage")
+                    use_gdrive = False
+                    gdrive_upload_failed = True
 
             file_metadata = []
             max_file_size = 100 * 1024 * 1024  # 100MB per file
@@ -298,6 +329,9 @@ class ReportService:
                     ]
 
                     if not member_names:
+                        if use_gdrive and gdrive_folder_id:
+                            # Xoá folder trên Google Drive nếu không có file hợp lệ
+                            logger.warning(f"Xoá folder Google Drive không có file: {gdrive_folder_id}")
                         raise_error(400, "File ZIP không chứa file PDF hợp lệ.")
 
                     # Giới hạn số lượng file
@@ -317,7 +351,7 @@ class ReportService:
                             base_name = os.path.basename(name)
                             
                             # Làm sạch tên file (loại bỏ ký tự đặc biệt)
-                            base_name = "".join(c for c in base_name if c.isalnum() or c in "._- ")
+                            base_name = "".join(c for c in base_name if c.isalnum() or c in "._- ()[]")
                             if not base_name:
                                 base_name = f"file_{datetime.utcnow().timestamp()}.pdf"
                             
@@ -325,51 +359,88 @@ class ReportService:
                             if not base_name.lower().endswith(".pdf"):
                                 base_name += ".pdf"
 
-                            temp_path = os.path.join(folder_path, base_name)
+                            # Upload lên Google Drive nếu enabled và chưa fail
+                            if use_gdrive and gd_manager and gdrive_folder_id and not gdrive_upload_failed:
+                                file_id = gd_manager.upload_file_bytes(
+                                    content,
+                                    base_name,
+                                    parent_id=gdrive_folder_id
+                                )
+                                if file_id:
+                                    file_metadata.append({
+                                        "filename": base_name,
+                                        "path": f"gdrive://{file_id}",
+                                        "gdrive_file_id": file_id,
+                                        "size": len(content),
+                                        "storage": "google_drive"
+                                    })
+                                    logger.info(f"[GDRIVE] Uploaded: {base_name} -> {file_id}")
+                                else:
+                                    # Fallback: Google Drive upload thất bại lần đầu, sẽ lưu local cho file này và file sau
+                                    logger.warning(f"[FALLBACK] Google Drive upload failed for {base_name}, will save to local storage from now on")
+                                    gdrive_upload_failed = True
+                                    
+                                    temp_path = folder_path / base_name
+                                    counter = 1
+                                    while temp_path.exists():
+                                        name_part = os.path.splitext(base_name)[0]
+                                        ext_part = os.path.splitext(base_name)[1]
+                                        base_name = f"{name_part}_{counter}{ext_part}"
+                                        temp_path = folder_path / base_name
+                                        counter += 1
+                                    
+                                    with open(temp_path, "wb") as f:
+                                        f.write(content)
+                                    
+                                    file_metadata.append({
+                                        "filename": base_name,
+                                        "path": str(temp_path.resolve()),
+                                        "size": len(content),
+                                        "storage": "local"
+                                    })
+                                    logger.info(f"[LOCAL] Saved (fallback): {base_name} at {temp_path}")
+                            else:
+                                # Lưu local
+                                temp_path = folder_path / base_name
 
-                            # Tránh ghi đè file trùng tên
-                            counter = 1
-                            original_path = temp_path
-                            while os.path.exists(temp_path):
-                                name_part = os.path.splitext(base_name)[0]
-                                ext_part = os.path.splitext(base_name)[1]
-                                base_name = f"{name_part}_{counter}{ext_part}"
-                                temp_path = os.path.join(folder_path, base_name)
-                                counter += 1
+                                # Tránh ghi đè file trùng tên
+                                counter = 1
+                                while temp_path.exists():
+                                    name_part = os.path.splitext(base_name)[0]
+                                    ext_part = os.path.splitext(base_name)[1]
+                                    base_name = f"{name_part}_{counter}{ext_part}"
+                                    temp_path = folder_path / base_name
+                                    counter += 1
+                                    
+                                    if counter > 1000:
+                                        base_name = f"{datetime.utcnow().timestamp()}_{base_name}"
+                                        temp_path = folder_path / base_name
+                                        break
+
+                                # Lưu file
+                                with open(temp_path, "wb") as f:
+                                    f.write(content)
+
+                                file_metadata.append({
+                                    "filename": base_name,
+                                    "path": str(temp_path.resolve()),
+                                    "size": len(content),
+                                    "storage": "local"
+                                })
                                 
-                                if counter > 1000:  # Tránh vòng lặp vô hạn
-                                    base_name = f"{datetime.utcnow().timestamp()}_{base_name}"
-                                    temp_path = os.path.join(folder_path, base_name)
-                                    break
-
-                            # Lưu file
-                            with open(temp_path, "wb") as f:
-                                f.write(content)
-
-                            file_metadata.append({
-                                "filename": base_name,
-                                "path": temp_path,
-                                "size": len(content)
-                            })
-                            
-                            logger.info(f"Đã giải nén file: {base_name} ({len(content)} bytes)")
+                                logger.info(f"[LOCAL] Saved: {base_name} at {temp_path}")
 
                         except Exception as e:
                             logger.error(f"Lỗi khi giải nén file {name}: {e}")
-                            # Tiếp tục với file khác
                             continue
 
                 if not file_metadata:
-                    # Xóa folder nếu không có file nào hợp lệ
-                    shutil.rmtree(folder_path, ignore_errors=True)
                     raise_error(400, "Không có file PDF hợp lệ nào trong ZIP.")
 
             except zipfile.BadZipFile as e:
-                shutil.rmtree(folder_path, ignore_errors=True)
                 logger.error(f"File ZIP không hợp lệ: {e}")
                 raise_error(400, f"File ZIP không hợp lệ: {e}")
             except Exception as e:
-                shutil.rmtree(folder_path, ignore_errors=True)
                 logger.error(f"Lỗi khi giải nén file ZIP: {e}", exc_info=True)
                 raise_error(500, f"Lỗi khi giải nén file ZIP: {e}")
 
@@ -379,11 +450,12 @@ class ReportService:
                     {
                         "filename": str(item.get("filename")),
                         "path": str(item.get("path")),
+                        "storage": item.get("storage", "local")
                     }
                     for item in file_metadata
                 ]
 
-                clean_folder_path = str(folder_path)
+                clean_folder_path = str(folder_path) if folder_path else f"gdrive://{gdrive_folder_id}"
 
                 task = process_uploaded_archive.delay(
                     str(exam_id),
@@ -392,11 +464,9 @@ class ReportService:
                     str(username),
                 )
                 logger.info(
-                    f"Đã khởi tạo task {task.id} để xử lý {len(clean_metadata)} file PDF cho exam {exam_id}"
+                    f"[TASK] Khởi tạo task {task.id} để xử lý {len(clean_metadata)} file PDF từ {clean_folder_path}"
                 )
             except Exception as e:
-                # Nếu không thể khởi tạo task, xóa folder
-                shutil.rmtree(folder_path, ignore_errors=True)
                 logger.error(f"Lỗi khởi tạo Celery task: {e}", exc_info=True)
                 raise_error(500, f"Không thể khởi tạo task xử lý: {e}")
 
@@ -409,12 +479,12 @@ class ReportService:
                     "task_id": task.id,
                     "websocket_url": f"/ws/status/{task.id}",
                     "api_url": f"/tasks/status/{task.id}",
-                    "file_count": len(file_metadata)
+                    "file_count": len(file_metadata),
+                    "storage": "google_drive" if use_gdrive else "local"
                 },
             }
 
         except HTTPException:
-            # Re-raise HTTPException
             raise
         except Exception as e:
             logger.error(f"Lỗi không mong đợi trong process_zip_upload: {e}", exc_info=True)
@@ -423,7 +493,9 @@ class ReportService:
     @staticmethod
     def export_by_exam(db, exam_id: int):
         # Lấy dữ liệu báo cáo theo kỳ thi
-        reports = db.query(Report).all()
+        reports = db.query(Report).filter(
+            Report.exam_id == exam_id
+        ).order_by(Report.created_at.desc()).all()
 
         if not reports:
             return {"status": False, "message": "Không có dữ liệu để xuất Excel."}
@@ -503,4 +575,25 @@ class ReportService:
             headers={
                 "Content-Disposition": f"attachment; filename={filename}"
             }
+        )
+
+    @staticmethod
+    def download_report_pdf(db: Session, report_id: int) -> FileResponse:
+        report = db.query(Report).options(joinedload(Report.files)).filter(Report.id == report_id).first()
+        if not report:
+            raise_error(404, "Report không tồn tại")
+
+        if not report.files:
+            raise_error(404, "Báo cáo không có file đính kèm")
+
+        file_record = report.files[0]
+        file_path = Path(file_record.path_storage)
+
+        if not file_path.exists():
+            raise_error(404, "File báo cáo không tồn tại trên hệ thống")
+
+        return FileResponse(
+            path=str(file_path),
+            media_type="application/pdf",
+            filename=file_record.name_file or file_path.name
         )

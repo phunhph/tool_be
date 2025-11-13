@@ -1,19 +1,21 @@
-import redis
 import json
 import os
 import logging
+import uuid
 from datetime import datetime
 from typing import List, Dict, Any
 
-from app.services.websocket_manager import manager
 from app.core.celery_app import celery_app
 from app.services.gemini_service import GeminiService, PLAGIARISM_THRESHOLD
 from app.db import SessionLocal
 from app.models import Report, ReportFile
 from app.schemas.report import ReportStatus
+from app.core.redis_client import redis_client
+from app.core.google_drive import get_google_drive_manager
+from io import BytesIO
 
 # Redis connection
-r = redis.Redis(host="localhost", port=6379, db=1, decode_responses=True)
+r = redis_client
 logger = logging.getLogger(__name__)
 
 @celery_app.task(bind=True)
@@ -67,12 +69,47 @@ def process_uploaded_archive(self, exam_id: str, folder_path: str, file_metadata
             try:
                 logger.info(f"[Task {task_id}] Đang xử lý file {i}/{total_pdfs}: {filename}")
 
-                # Đọc file PDF
-                if not os.path.exists(file_path):
-                    raise FileNotFoundError(f"File không tồn tại: {file_path}")
+                # Đọc file PDF (từ Google Drive hoặc Local)
+                file_path = pdf_info.get("path")
+                storage_type = pdf_info.get("storage", "local")
+                
+                pdf_bytes = None
+                
+                if storage_type == "google_drive" and file_path.startswith("gdrive://"):
+                    # Đọc từ Google Drive
+                    gdrive_file_id = file_path.replace("gdrive://", "")
+                    gd_manager = get_google_drive_manager()
+                    
+                    if gd_manager.is_configured:
+                        try:
+                            # Download file từ Google Drive
+                            request = gd_manager.service.files().get_media(fileId=gdrive_file_id)
+                            fh = BytesIO()
+                            downloader = gd_manager.service.files()._service.auth.do_request(request)
+                            # Đơn giản hơn: dùng download_to_file
+                            from googleapiclient.http import MediaIoBaseDownload
+                            downloader = MediaIoBaseDownload(fh, request)
+                            done = False
+                            while not done:
+                                status, done = downloader.next_chunk()
+                            pdf_bytes = fh.getvalue()
+                            logger.info(f"[GDRIVE] Downloaded: {filename} ({len(pdf_bytes)} bytes)")
+                        except Exception as e:
+                            logger.error(f"Lỗi download từ Google Drive: {e}")
+                            raise
+                    else:
+                        raise Exception("Google Drive not configured")
+                else:
+                    # Đọc từ Local Storage
+                    if not os.path.exists(file_path):
+                        raise FileNotFoundError(f"File không tồn tại: {file_path}")
 
-                with open(file_path, "rb") as f:
-                    pdf_bytes = f.read()
+                    with open(file_path, "rb") as f:
+                        pdf_bytes = f.read()
+                    logger.info(f"[LOCAL] Read: {filename} ({len(pdf_bytes)} bytes)")
+
+                if not pdf_bytes:
+                    raise ValueError("Không thể đọc file PDF")
 
                 # Trích xuất thông tin từ PDF bằng GeminiService
                 extracted_data = GeminiService.extract_info_from_pdf(pdf_bytes)
@@ -125,12 +162,14 @@ def process_uploaded_archive(self, exam_id: str, folder_path: str, file_metadata
                     exam_id=exam_id_int,
                     created_at=datetime.utcnow(),
                     created_by=username,
+                    processing_error=None,
                 )
 
                 db.add(new_report)
                 db.flush()  # Lấy ID của report
 
                 # Tạo ReportFile trong database
+                # path_storage: Lưu đường dẫn Google Drive (gdrive://id) hoặc local path
                 new_report_file = ReportFile(
                     name_file=filename,
                     path_storage=file_path,
@@ -138,9 +177,7 @@ def process_uploaded_archive(self, exam_id: str, folder_path: str, file_metadata
                     created_at=datetime.utcnow(),
                 )
                 db.add(new_report_file)
-
-                # Commit để lưu vào DB
-                db.commit()
+                logger.info(f"[DB] Created ReportFile: {filename} -> {file_path}")
 
                 # Lưu thông tin để kiểm tra đạo văn sau
                 processed_reports.append({
@@ -164,7 +201,9 @@ def process_uploaded_archive(self, exam_id: str, folder_path: str, file_metadata
                 r.hincrby(f"task:{task_id}", "pdf_done", 1)
 
                 logger.info(f"[Task {task_id}] Đã xử lý thành công: {filename} (Report ID: {new_report.id})")
-
+            # Commit để lưu vào DB
+                db.commit()
+            
             except Exception as e:
                 logger.error(f"[Task {task_id}] Lỗi xử lý file {filename}: {str(e)}", exc_info=True)
                 
@@ -173,10 +212,55 @@ def process_uploaded_archive(self, exam_id: str, folder_path: str, file_metadata
 
                 # Cập nhật Redis
                 error_msg = str(e)[:500]  # Giới hạn độ dài error message
+                fallback_report_id = None
+                fallback_student_code = None
+                fallback_name = os.path.splitext(filename)[0] or filename
+
+                try:
+                    fallback_report = Report(
+                        name=fallback_name,
+                        student_code=f"ERR-{uuid.uuid4().hex[:8]}",
+                        status=ReportStatus.failed,
+                        exam_id=exam_id_int,
+                        created_at=datetime.utcnow(),
+                        created_by=username,
+                        processing_error=error_msg,
+                    )
+                    db.add(fallback_report)
+                    db.flush()
+
+                    fallback_file = ReportFile(
+                        name_file=filename,
+                        path_storage=file_path,
+                        report_id=fallback_report.id,
+                        created_at=datetime.utcnow(),
+                    )
+                    db.add(fallback_file)
+                    db.commit()
+
+                    fallback_report_id = fallback_report.id
+                    fallback_student_code = fallback_report.student_code
+                    fallback_name = fallback_report.name
+                except Exception as persist_error:
+                    db.rollback()
+                    logger.error(
+                        f"[Task {task_id}] Không thể lưu báo cáo lỗi cho file {filename}: {persist_error}",
+                        exc_info=True,
+                    )
+
+                result_payload = {}
+                if fallback_report_id:
+                    result_payload = {
+                        "report_id": fallback_report_id,
+                        "student_code": fallback_student_code,
+                        "name": fallback_name,
+                        "error": error_msg,
+                    }
+
                 r.hset(f"task:{task_id}:file:{filename}", mapping={
                     "filename": filename,
                     "status": "FAILED",
-                    "result": "",
+                    "result": json.dumps(result_payload, ensure_ascii=False) if result_payload else "",
                     "error": error_msg
                 })
                 r.hincrby(f"task:{task_id}", "pdf_failed", 1)

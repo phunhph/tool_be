@@ -6,7 +6,14 @@ from app.core.config import settings
 SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
 
 # Nếu DATABASE_URL là PostgreSQL thì không dùng connect_args
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    pool_size=10,              # Số connection tối đa trong pool
+    max_overflow=20,           # Số connection thêm khi cần
+    pool_pre_ping=True,        # Kiểm tra connection trước khi dùng
+    pool_recycle=3600,         # Tái tạo connection sau 1 giờ
+    echo=False                  # Tắt SQL logging trong production
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

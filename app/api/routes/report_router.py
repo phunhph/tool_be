@@ -1,5 +1,6 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.user import User
@@ -19,6 +20,10 @@ def get_reports(db: Session = Depends(get_db), _: User = Depends(require_role(["
 @router.get("/{report_id}", response_model=DetailResponse[ReportResponse], summary="Chi tiết báo cáo theo ID")
 def get_report_detail(report_id: int, db: Session = Depends(get_db), _: User = Depends(require_role(["admin", "viewer"]))):
     return ReportService.get_detail(db, report_id)
+
+@router.get("/{report_id}/download", response_class=FileResponse, summary="Tải file PDF của báo cáo")
+def download_report_file(report_id: int, db: Session = Depends(get_db), _: User = Depends(require_role(["admin", "viewer", "master"]))):
+    return ReportService.download_report_pdf(db, report_id)
 
 @router.post("/", response_model=CreateResponse, summary="Tạo báo cáo mới")
 def create_report(payload: ReportCreate, db: Session = Depends(get_db), current_user: User = Depends(require_role(["admin"]))):

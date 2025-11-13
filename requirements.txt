@@ -50,3 +50,7 @@ redis
 eventlet
 google.generativeai
 flask-cors
+
+google-auth-oauthlib 
+google-auth-httplib2 
+google-api-python-client

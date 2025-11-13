@@ -97,6 +97,7 @@ alembic upgrade head ||  python -m alembic upgrade head
 ```bash
 uvicorn app.main:app --reload ||  python -m uvicorn app.main:app  --reload 
 ```
+python -m uvicorn app.main:app --reload 2>&1 | Select-Object -First 50
 celery -A app.core.celery_app worker -l info -Q report -P solo
 
 
